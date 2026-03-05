@@ -1,0 +1,22 @@
+import { z } from "zod";
+
+// Values are keyed by fieldKey. Type varies by field type.
+export const createRecordSchema = z.object({
+  values: z.record(z.unknown()).optional().default({}),
+  pipelineStageId: z.string().optional(),
+});
+
+export const updateRecordSchema = z.object({
+  values: z.record(z.unknown()).optional(),
+  pipelineStageId: z.string().optional().nullable(),
+});
+
+export const listRecordsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  stageId: z.string().optional(),
+});
+
+export type CreateRecordInput = z.infer<typeof createRecordSchema>;
+export type UpdateRecordInput = z.infer<typeof updateRecordSchema>;
+export type ListRecordsQuery = z.infer<typeof listRecordsQuerySchema>;

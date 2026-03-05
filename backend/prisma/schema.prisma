@@ -1,0 +1,745 @@
+// Dynamic CRM Platform — Prisma Schema
+// Multi-tenant, metadata-driven. No hardcoded modules.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============== TENANCY ==============
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  plan      String   @default("free") // free | starter | growth | enterprise
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  roles       Role[]
+  modules     Module[]
+  pipelines   Pipeline[]
+  tasks       Task[]
+  automations Automation[]
+  dashboards  Dashboard[]
+  moduleRelationships ModuleRelationship[]
+  activityLogs ActivityLog[]
+  settings   TenantSettings?
+  apiTokens  ApiToken[]
+  webhooks   Webhook[]
+  auditLogs  AuditLog[]
+  importJobs ImportJob[]
+  notifications Notification[]
+  smtpConfig SmtpConfig?
+  emailLogs  EmailLog[]
+  files      File[]
+  subscriptions Subscription[]
+  whatsappConversations WhatsAppConversation[]
+  whatsappTemplates WhatsAppTemplate[]
+  leadSources     LeadSource[]
+  webForms        WebForm[]
+}
+
+model TenantSettings {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique @map("tenant_id")
+  companyName   String?  @map("company_name")
+  logoUrl       String?  @map("logo_url")
+  faviconUrl    String?  @map("favicon_url")
+  primaryColor  String?  @map("primary_color")
+  secondaryColor String? @map("secondary_color")
+  customDomain  String?  @map("custom_domain")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([customDomain])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  email        String
+  passwordHash String
+  roleId       String?
+  status       String   @default("active") @map("status") // active | suspended
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role          Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  recordsCreated Record[] @relation("CreatedBy")
+  tasksAssigned Task[]   @relation("AssignedTo")
+  activityLogs  ActivityLog[]
+  apiTokensCreated ApiToken[] @relation("ApiTokenCreatedBy")
+  notifications  Notification[]
+  filesUploaded  File[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model Role {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  permissionsJSON String?  @map("permissions_json") // JSON: { "modules": {...}, "pipelines": {...}, ... }
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// ============== MODULES & FIELDS (METADATA) ==============
+
+model Module {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  slug        String
+  icon        String?  @default("folder")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fields   Field[]
+  records  Record[]
+  pipelines Pipeline[]
+  automations Automation[]
+  relationshipsAsSource ModuleRelationship[] @relation("SourceModule")
+  relationshipsAsTarget ModuleRelationship[] @relation("TargetModule")
+  leadSources LeadSource[]
+  webForms    WebForm[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+model Field {
+  id           String   @id @default(cuid())
+  moduleId     String
+  tenantId     String
+  label        String
+  fieldKey     String   // unique per module, used in RecordValue lookups
+  fieldType    String   // text | number | email | phone | textarea | dropdown | multi_select | checkbox | date | currency | file | boolean
+  isRequired   Boolean  @default(false)
+  isUnique     Boolean  @default(false)
+  optionsJSON  String?  @map("options_json")  // for dropdown/multi_select: ["A","B"] or { "choices": [...] }
+  defaultValue String?  @map("default_value")
+  orderIndex   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  module  Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  values  RecordValue[]
+
+  @@unique([moduleId, fieldKey])
+  @@index([moduleId])
+  @@index([tenantId])
+}
+
+// ============== RECORDS (EAV DATA) ==============
+
+model Record {
+  id               String   @id @default(cuid())
+  moduleId         String
+  tenantId         String
+  createdBy        String?
+  pipelineStageId  String?  @map("pipeline_stage_id")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  module  Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  creator User?        @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  stage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
+  values  RecordValue[]
+  tasks   Task[]
+  recordRelationsAsSource RecordRelation[] @relation("SourceRecord")
+  recordRelationsAsTarget RecordRelation[] @relation("TargetRecord")
+  activityLogs ActivityLog[]
+  emailLogs    EmailLog[]
+  files        File[]
+  whatsappConversations WhatsAppConversation[]
+  formSubmissions FormSubmission[]
+
+  @@index([tenantId])
+  @@index([moduleId])
+  @@index([pipelineStageId])
+  @@index([createdBy])
+  @@index([tenantId, moduleId])
+  @@index([tenantId, moduleId, updatedAt])
+  @@index([tenantId, createdAt])
+}
+
+model RecordValue {
+  id         String   @id @default(cuid())
+  recordId   String
+  fieldId    String
+  valueText  String?  @map("value_text")
+  valueNumber Float?  @map("value_number")
+  valueDate  DateTime? @map("value_date")
+  valueJSON  String?  @map("value_json")  // JSON for multi-select, etc.
+
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  field  Field  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, fieldId])
+  @@index([recordId])
+  @@index([fieldId])
+  @@index([recordId, fieldId])
+}
+
+// ============== PIPELINES ==============
+
+model Pipeline {
+  id       String  @id @default(cuid())
+  tenantId String
+  moduleId String
+  name     String
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module  Module          @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  stages  PipelineStage[]
+
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+model PipelineStage {
+  id         String  @id @default(cuid())
+  pipelineId String
+  stageName  String  @map("stage_name")
+  orderIndex Int     @default(0) @map("order_index")
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  records  Record[]
+
+  @@index([pipelineId])
+}
+
+// ============== TASKS ==============
+
+model Task {
+  id               String    @id @default(cuid())
+  tenantId         String
+  relatedRecordId  String?   @map("related_record_id")
+  assignedTo       String?   @map("assigned_to")
+  title            String?
+  description      String?
+  dueDate          DateTime? @map("due_date")
+  status           String    @default("pending") // pending | in_progress | completed | cancelled
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record   Record? @relation(fields: [relatedRecordId], references: [id], onDelete: SetNull)
+  assignee User?   @relation("AssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([relatedRecordId])
+  @@index([assignedTo])
+  @@index([dueDate])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+}
+
+// ============== AUTOMATIONS ==============
+
+model Automation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  moduleId      String?
+  name          String?
+  triggerType   String   @map("trigger_type")   // record_created | record_updated | stage_changed | task_overdue
+  conditionsJSON String? @map("conditions_json") // [{ "field": "...", "operator": "eq", "value": "..." }]
+  actionsJSON   String   @map("actions_json")   // [{ "type": "create_task", "params": {...} }]
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module Module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([moduleId])
+  @@index([triggerType])
+}
+
+// ============== DASHBOARDS ==============
+
+model Dashboard {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  widgets Widget[]
+
+  @@index([tenantId])
+}
+
+model Widget {
+  id          String   @id @default(cuid())
+  dashboardId String
+  widgetType  String   @map("widget_type")  // chart | table | metric | list | etc.
+  configJSON  String?  @map("config_json") // { "moduleId", "filters", "groupBy", ... }
+  orderIndex  Int      @default(0) @map("order_index")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+}
+
+// ============== MODULE RELATIONSHIPS ==============
+
+model ModuleRelationship {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String   // e.g. "Deal Contacts"
+  sourceModuleId  String   @map("source_module_id")  // "one" in 1:N, or either in M:N
+  targetModuleId  String   @map("target_module_id")  // "many" in 1:N
+  relationshipType String @map("relationship_type") // one_to_many | many_to_many
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant       Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceModule Module  @relation("SourceModule", fields: [sourceModuleId], references: [id], onDelete: Cascade)
+  targetModule Module  @relation("TargetModule", fields: [targetModuleId], references: [id], onDelete: Cascade)
+  recordRelations RecordRelation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([sourceModuleId])
+  @@index([targetModuleId])
+}
+
+model RecordRelation {
+  id             String   @id @default(cuid())
+  relationshipId String  @map("relationship_id")
+  sourceRecordId String @map("source_record_id")  // "one" side in 1:N
+  targetRecordId String @map("target_record_id")  // "many" side in 1:N
+
+  relationship  ModuleRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  sourceRecord  Record             @relation("SourceRecord", fields: [sourceRecordId], references: [id], onDelete: Cascade)
+  targetRecord  Record             @relation("TargetRecord", fields: [targetRecordId], references: [id], onDelete: Cascade)
+
+  @@unique([relationshipId, sourceRecordId, targetRecordId])
+  @@index([relationshipId])
+  @@index([sourceRecordId])
+  @@index([targetRecordId])
+}
+
+// ============== ACTIVITY LOG ==============
+
+model ActivityLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  recordId     String   @map("record_id")
+  userId       String?  @map("user_id")
+  eventType    String   @map("event_type") // record_created | record_updated | stage_changed | task_created | note_added
+  metadataJSON String?  @map("metadata_json") // { stageName?, taskId?, previousStageName?, etc. }
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([recordId])
+  @@index([recordId, createdAt])
+}
+
+// ============== API INTEGRATION ==============
+
+model ApiToken {
+  id             String    @id @default(cuid())
+  tenantId       String    @map("tenant_id")
+  name           String
+  tokenHash      String    @map("token_hash")
+  permissionsJSON String?  @map("permissions_json")
+  createdBy      String?   @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastUsedAt     DateTime? @map("last_used_at")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdByUser User? @relation("ApiTokenCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tokenHash])
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  eventType String   @map("event_type") // record_created | record_updated | record_deleted | stage_changed | task_created
+  targetUrl String  @map("target_url")
+  secretKey String? @map("secret_key")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, eventType])
+}
+
+// ============== AUDIT LOG ==============
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  userId      String?  @map("user_id")
+  action      String   @map("action")   // record_created | record_updated | record_deleted | login | permission_changed
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadataJSON String? @map("metadata_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+}
+
+// ============== IMPORT JOBS (CSV / BULK) ==============
+
+model ImportJob {
+  id            String    @id @default(cuid())
+  tenantId      String    @map("tenant_id")
+  moduleId      String    @map("module_id")
+  status        String    @default("pending")   // pending | processing | completed | failed
+  fileName      String?   @map("file_name")
+  filePath      String?   @map("file_path")
+  mappingJSON   String    @map("mapping_json")   // { "CSV Column A": "fieldKey", ... }
+  totalRows     Int       @default(0) @map("total_rows")
+  processedRows Int       @default(0) @map("processed_rows")
+  successCount  Int       @default(0) @map("success_count")
+  errorCount    Int       @default(0) @map("error_count")
+  errorMessage  String?   @map("error_message")
+  createdBy     String?   @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  completedAt   DateTime? @map("completed_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+// ============== NOTIFICATIONS ==============
+
+model Notification {
+  id         String    @id @default(cuid())
+  tenantId   String    @map("tenant_id")
+  userId     String    @map("user_id")
+  type       String    @map("type")   // task_assigned | record_created | stage_changed | automation_triggered
+  title      String    @map("title")
+  message    String?   @map("message")
+  entityType String?   @map("entity_type")  // task | record | automation
+  entityId   String?   @map("entity_id")
+  metadataJSON String? @map("metadata_json")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([userId, readAt])
+}
+
+// ============== EMAIL ==============
+
+model SmtpConfig {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique @map("tenant_id")
+  host              String   @map("host")
+  port              Int      @default(587) @map("port")
+  secure            Boolean  @default(false) @map("secure")
+  user              String   @map("user")
+  passwordEncrypted String?  @map("password_encrypted")
+  fromEmail         String   @map("from_email")
+  fromName          String?  @map("from_name")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model EmailLog {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  recordId  String?   @map("record_id")
+  to        String    @map("to")
+  subject   String    @map("subject")
+  body      String    @map("body")
+  status    String    @default("sent") @map("status")
+  sentAt    DateTime? @map("sent_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([recordId])
+}
+
+// ============== FILES (S3 / attachments) ==============
+
+model File {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  recordId   String   @map("record_id")
+  fileName   String   @map("file_name")
+  fileUrl    String   @map("file_url")
+  uploadedBy String?  @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  uploader User? @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([recordId])
+}
+
+// ============== BILLING (per-user SaaS) ==============
+
+model Plan {
+  id           String   @id @default(cuid())
+  name         String   @map("name")
+  description  String?  @map("description")
+  pricePerUser Int      @map("price_per_user")
+  billingCycle String   @default("monthly") @map("billing_cycle")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  limits       PlanLimit?
+  subscriptions Subscription[]
+
+  @@index([isActive])
+}
+
+model PlanLimit {
+  id             String   @id @default(cuid())
+  planId         String   @unique @map("plan_id")
+  maxUsers       Int      @map("max_users")
+  maxModules     Int      @map("max_modules")
+  maxRecords     Int      @map("max_records")
+  maxAutomations Int      @map("max_automations")
+  maxApiCalls    Int?     @map("max_api_calls")
+  maxStorageGB   Int?     @map("max_storage_gb")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model Subscription {
+  id                  String    @id @default(cuid())
+  tenantId            String    @map("tenant_id")
+  planId              String    @map("plan_id")
+  status              String    @map("status")
+  billingCycle        String    @default("monthly") @map("billing_cycle")
+  userCount           Int       @map("user_count")
+  pricePerUser        Int       @map("price_per_user")
+  currentPeriodStart  DateTime? @map("current_period_start")
+  currentPeriodEnd    DateTime? @map("current_period_end")
+  trialEndsAt         DateTime? @map("trial_ends_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices Invoice[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model Invoice {
+  id                 String   @id @default(cuid())
+  tenantId           String   @map("tenant_id")
+  subscriptionId     String   @map("subscription_id")
+  userCount          Int      @map("user_count")
+  pricePerUser       Int      @map("price_per_user")
+  totalAmount        Int      @map("total_amount")
+  status             String   @map("status")
+  billingPeriodStart DateTime @map("billing_period_start")
+  billingPeriodEnd   DateTime @map("billing_period_end")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  invoiceId       String    @map("invoice_id")
+  provider        String    @map("provider")
+  transactionId   String?   @map("transaction_id")
+  status          String    @map("status")
+  paidAt          DateTime? @map("paid_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+// ============== WHATSAPP ==============
+
+model WhatsAppConversation {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  recordId       String?  @map("record_id")
+  phoneNumber    String   @map("phone_number")
+  status         String   @default("open") @map("status") // open | closed
+  assignedUserId String?  @map("assigned_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record   Record?  @relation(fields: [recordId], references: [id], onDelete: SetNull)
+  messages WhatsAppMessage[]
+
+  @@unique([tenantId, phoneNumber])
+  @@index([tenantId])
+  @@index([recordId])
+  @@index([tenantId, status])
+}
+
+model WhatsAppMessage {
+  id                String   @id @default(cuid())
+  tenantId          String   @map("tenant_id")
+  conversationId    String   @map("conversation_id")
+  recordId          String?  @map("record_id")
+  phoneNumber       String   @map("phone_number")
+  messageBody       String   @map("message_body")
+  direction         String   @map("direction") // inbound | outbound
+  status            String   @default("sent") @map("status") // sent | delivered | read | failed
+  providerMessageId String?  @map("provider_message_id")
+  provider          String?  @map("provider") // meta | twilio | dialog
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([conversationId])
+  @@index([recordId])
+  @@index([tenantId, recordId])
+}
+
+model WhatsAppTemplate {
+  id                 String   @id @default(cuid())
+  tenantId           String   @map("tenant_id")
+  name               String   @map("name")
+  templateBody       String   @map("template_body")
+  variablesJSON      String?  @map("variables_json") // ["name", "company"] etc.
+  providerTemplateId String?  @map("provider_template_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+// ============== LEAD CAPTURE ==============
+
+model LeadSource {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String   @map("name")
+  type      String   @map("type") // website_form | webhook | facebook | manual
+  moduleId  String   @map("module_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+model WebForm {
+  id               String   @id @default(cuid())
+  tenantId         String   @map("tenant_id")
+  moduleId         String   @map("module_id")
+  formName         String   @map("form_name")
+  fieldsJSON       String   @map("fields_json")
+  redirectUrl      String?  @map("redirect_url")
+  successMessage   String?  @map("success_message")
+  isActive         Boolean  @default(true) @map("is_active")
+  recaptchaEnabled Boolean  @default(false) @map("recaptcha_enabled")
+  autoAssignUserId String?  @map("auto_assign_user_id")
+  viewCount        Int      @default(0) @map("view_count")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module       Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  submissions  FormSubmission[]
+
+  @@index([tenantId])
+  @@index([moduleId])
+  @@index([tenantId, isActive])
+}
+
+model FormSubmission {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  formId      String   @map("form_id")
+  recordId    String   @map("record_id")
+  payloadJSON String   @map("payload_json")
+  sourceIP    String?  @map("source_ip")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  form   WebForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  record Record  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([formId])
+  @@index([recordId])
+  @@index([formId, createdAt])
+}
+
+// ============== CRM TEMPLATES ==============
+
+model CrmTemplate {
+  id           String   @id @default(cuid())
+  name         String   @map("name")
+  description  String?  @map("description")
+  icon         String?  @map("icon")
+  templateJSON String   @map("template_json")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([name])
+}
