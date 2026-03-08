@@ -8,6 +8,9 @@ import { fireAutomations } from "../automations/automation-engine.js";
 import { logActivity } from "../activity-log/activity-log.service.js";
 import { createAuditLog } from "../audit-log/audit-log.service.js";
 import { createNotification } from "../notifications/notifications.service.js";
+import { indexRecord, removeFromSearchIndex } from "../search/search-index.service.js";
+import { getAssignedUserId } from "../assignment-rules/assignment-rules.service.js";
+import { checkDuplicateFields } from "../duplicate-rules/duplicate-rules.service.js";
 import { dispatchWebhooks } from "../webhooks/webhook-dispatcher.js";
 import {
   canAccessModule,
@@ -30,14 +33,20 @@ export interface RecordPermissionContext {
 
 // ---------- Create ----------
 
+export interface CreateRecordOptions {
+  /** When true, skip firing automations, webhooks, and notification (e.g. when creating from an automation to avoid cascade) */
+  fromAutomation?: boolean;
+}
+
 export async function createRecord(
   tenantId: string,
   moduleId: string,
   createdBy: string | null,
   input: CreateRecordInput,
-  perm?: RecordPermissionContext
+  perm?: RecordPermissionContext,
+  options?: CreateRecordOptions
 ): Promise<RecordDetail> {
-  if (perm && !canAccessModule(perm.permissions, moduleId, "create")) {
+  if (!options?.fromAutomation && perm && !canAccessModule(perm.permissions, moduleId, "create")) {
     throw new PermissionDeniedError("No create access to this module");
   }
   const module = await prisma.module.findFirst({
@@ -48,6 +57,15 @@ export async function createRecord(
 
   const values = input.values ?? {};
   await validateValuesForCreate(tenantId, moduleId, values);
+
+  const duplicates = await checkDuplicateFields(tenantId, moduleId, values);
+  if (Object.keys(duplicates).length > 0 && !input.allowDuplicate) {
+    const err = new Error("Duplicate records found") as Error & { duplicates?: Record<string, string[]> };
+    err.duplicates = duplicates;
+    throw err;
+  }
+
+  const assignedOwnerId = input.ownerId ?? (await getAssignedUserId(tenantId, moduleId, values));
 
   if (input.pipelineStageId) {
     const stage = await prisma.pipelineStage.findFirst({
@@ -65,6 +83,7 @@ export async function createRecord(
         moduleId,
         tenantId,
         createdBy,
+        ownerId: assignedOwnerId ?? undefined,
         pipelineStageId: input.pipelineStageId ?? undefined,
       },
     });
@@ -90,24 +109,27 @@ export async function createRecord(
   });
 
   const detail = await getRecordDetail(tenantId, record.id);
+  const fromAutomation = options?.fromAutomation === true;
   logActivity({
     tenantId,
     recordId: record.id,
     userId: createdBy,
     eventType: "record_created",
   }).catch(() => {});
-  fireAutomations(
-    "record_created",
-    { tenantId, moduleId, recordId: record.id, userId: createdBy ?? undefined },
-    detail.values
-  ).catch(() => {});
-  dispatchWebhooks(tenantId, "record_created", {
-    module: module.slug,
-    moduleId,
-    recordId: record.id,
-    tenantId,
-    data: detail.values as Record<string, unknown>,
-  }).catch(() => {});
+  if (!fromAutomation) {
+    fireAutomations(
+      "record_created",
+      { tenantId, moduleId, recordId: record.id, userId: createdBy ?? undefined },
+      detail.values
+    ).catch(() => {});
+    dispatchWebhooks(tenantId, "record_created", {
+      module: module.slug,
+      moduleId,
+      recordId: record.id,
+      tenantId,
+      data: detail.values as Record<string, unknown>,
+    }).catch(() => {});
+  }
   createAuditLog({
     tenantId,
     userId: createdBy,
@@ -116,18 +138,20 @@ export async function createRecord(
     entityId: record.id,
     metadataJSON: JSON.stringify({ moduleId, moduleSlug: module.slug }),
   }).catch(() => {});
-  if (createdBy) {
+  if (!fromAutomation && createdBy) {
     createNotification({
       tenantId,
       userId: createdBy,
       type: "record_created",
       title: "Record created",
       message: `New record in ${module.name}`,
+      link: `/record/${record.id}`,
       entityType: "record",
       entityId: record.id,
       metadataJSON: JSON.stringify({ moduleId, moduleSlug: module.slug }),
     }).catch(() => {});
   }
+  indexRecord(tenantId, record.id).catch(() => {});
   return detail;
 }
 
@@ -145,12 +169,39 @@ export async function listRecords(
   const module = await prisma.module.findFirst({ where: { id: moduleId, tenantId } });
   if (!module) throw new Error("Module not found");
 
-  const where: { moduleId: string; tenantId: string; pipelineStageId?: string; createdBy?: string } = {
+  const where: { moduleId: string; tenantId: string; pipelineStageId?: string; createdBy?: string; ownerId?: string; createdAt?: { gte?: Date; lte?: Date } } = {
     moduleId,
     tenantId,
   };
   if (query.stageId) where.pipelineStageId = query.stageId;
-  if (perm?.permissions?.recordVisibility === "own") where.createdBy = perm.userId;
+  if (query.ownerId) where.ownerId = query.ownerId;
+  if (query.createdBy) {
+    if (perm?.userId && query.createdBy !== perm.userId) {
+      throw new PermissionDeniedError("Can only filter by own records");
+    }
+    where.createdBy = query.createdBy;
+  } else if (perm?.permissions?.recordVisibility === "own") {
+    where.OR = [{ ownerId: perm.userId }, { createdBy: perm.userId }];
+  }
+  if (query.dateFrom || query.dateTo) {
+    where.createdAt = {};
+    // Accept YYYY-MM-DD or DD-MM-YYYY so date params always parse correctly
+    const toYmd = (s: string): string => {
+      const parts = s.trim().split(/[-/]/);
+      if (parts.length !== 3) return s;
+      const [a, b, c] = parts.map((p) => p.padStart(2, "0"));
+      if (a.length === 4) return `${a}-${b}-${c}`; // already YYYY-MM-DD (year-month-day)
+      return `${c}-${b}-${a}`; // DD-MM-YYYY -> YYYY-MM-DD (day=a, month=b, year=c)
+    };
+    if (query.dateFrom) {
+      const ymd = toYmd(query.dateFrom);
+      where.createdAt.gte = new Date(ymd + "T00:00:00.000Z");
+    }
+    if (query.dateTo) {
+      const ymd = toYmd(query.dateTo);
+      where.createdAt.lte = new Date(ymd + "T23:59:59.999Z");
+    }
+  }
 
   const [records, total] = await Promise.all([
     prisma.record.findMany({
@@ -180,7 +231,7 @@ export async function getRecordDetail(
   const record = await prisma.record.findFirst({
     where: { id: recordId, tenantId },
     include: {
-      module: true,
+      module: { include: { fields: true } },
       values: { include: { field: true } },
       stage: true,
       creator: true,
@@ -190,7 +241,35 @@ export async function getRecordDetail(
   if (perm && !canViewRecord(perm.permissions, record.moduleId, record.createdBy, perm.userId)) {
     throw new PermissionDeniedError("No view access to this record");
   }
-  return mapRecordToValues(record) as RecordDetail;
+  const detail = mapRecordToValues(record) as RecordDetail;
+  if (record.module?.fields) {
+    const relationDisplay: Record<string, string> = {};
+    const userDisplay: Record<string, string> = {};
+    for (const f of record.module.fields) {
+      const raw = detail.values[f.fieldKey];
+      const id = raw != null && raw !== "" ? String(raw) : null;
+      if (!id) continue;
+      if (f.fieldType === "relation" && f.relationModuleId) {
+        const related = await prisma.record.findFirst({
+          where: { id, tenantId },
+          include: { values: { include: { field: true } } },
+        });
+        if (related) {
+          const firstText = related.values.find((v) => v.valueText != null);
+          relationDisplay[f.fieldKey] = firstText?.valueText ?? id;
+        }
+      } else if (f.fieldType === "user") {
+        const user = await prisma.user.findFirst({
+          where: { id, tenantId },
+          select: { name: true },
+        });
+        if (user) userDisplay[f.fieldKey] = user.name;
+      }
+    }
+    if (Object.keys(relationDisplay).length > 0) detail.relationDisplay = relationDisplay;
+    if (Object.keys(userDisplay).length > 0) detail.userDisplay = userDisplay;
+  }
+  return detail;
 }
 
 // ---------- Update ----------
@@ -232,6 +311,13 @@ export async function updateRecord(
     await prisma.record.update({
       where: { id: recordId },
       data: { pipelineStageId: input.pipelineStageId ?? null },
+    });
+  }
+
+  if (input.ownerId !== undefined) {
+    await prisma.record.update({
+      where: { id: recordId },
+      data: { ownerId: input.ownerId ?? null },
     });
   }
 
@@ -293,6 +379,7 @@ export async function updateRecord(
     entityId: recordId,
     metadataJSON: JSON.stringify({ moduleId: record.moduleId, moduleSlug: record.module.slug }),
   }).catch(() => {});
+  indexRecord(tenantId, recordId).catch(() => {});
   return detail;
 }
 
@@ -327,6 +414,7 @@ export async function deleteRecord(
     entityId: recordId,
     metadataJSON: JSON.stringify({ moduleId: record.moduleId, moduleSlug: record.module.slug }),
   }).catch(() => {});
+  removeFromSearchIndex(recordId).catch(() => {});
   await prisma.record.deleteMany({ where: mergeWhere(tenantId, { id: recordId }) });
 }
 
@@ -337,6 +425,7 @@ function mapRecordToValues(record: {
   moduleId: string;
   tenantId: string;
   createdBy: string | null;
+  ownerId?: string | null;
   pipelineStageId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -369,6 +458,7 @@ function mapRecordToValues(record: {
     moduleId: record.moduleId,
     tenantId: record.tenantId,
     createdBy: record.createdBy,
+    ownerId: record.ownerId ?? null,
     pipelineStageId: record.pipelineStageId,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

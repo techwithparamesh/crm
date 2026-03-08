@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { AuthRequest } from "../../middleware/authMiddleware.js";
 import * as dashboardsService from "./dashboards.service.js";
-import { createDashboardSchema, createWidgetSchema, updateWidgetSchema } from "./dashboards.validation.js";
+import { createDashboardSchema, updateDashboardSchema, createWidgetSchema, updateWidgetSchema } from "./dashboards.validation.js";
 
 const router = Router();
 
@@ -32,6 +32,27 @@ router.get("/:id", async (req: AuthRequest, res, next) => {
     const tenantId = req.user!.tenantId;
     const dashboard = await dashboardsService.getDashboardById(tenantId, req.params.id);
     res.json(dashboard);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/:id", async (req: AuthRequest, res, next) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const body = updateDashboardSchema.parse(req.body);
+    const dashboard = await dashboardsService.updateDashboard(tenantId, req.params.id, body);
+    res.json(dashboard);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id", async (req: AuthRequest, res, next) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    await dashboardsService.deleteDashboard(tenantId, req.params.id);
+    res.status(204).send();
   } catch (e) {
     next(e);
   }

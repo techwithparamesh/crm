@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import type { ModuleRelationship } from "@/lib/api";
 import type { ModuleWithCount } from "@/lib/api";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Link2, Plus, Trash2 } from "lucide-react";
 
 export default function RelationshipsPage() {
@@ -90,10 +92,12 @@ export default function RelationshipsPage() {
           <Link2 className="h-6 w-6" />
           Module relationships
         </h1>
-        <Button onClick={() => setShowForm((v) => !v)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New relationship
-        </Button>
+        {!loading && list.length > 0 && (
+          <Button onClick={() => setShowForm((v) => !v)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New relationship
+          </Button>
+        )}
       </div>
 
       {showForm && (
@@ -164,16 +168,26 @@ export default function RelationshipsPage() {
       )}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-20 rounded-lg" />
+            ))}
+          </div>
+        </div>
       ) : list.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">
-              No relationships yet. Create one to link records between modules (e.g. Deal → Contacts).
-            </p>
-            <Button className="mt-4" onClick={() => setShowForm(true)}>Create relationship</Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<Link2 className="h-12 w-12 text-muted-foreground" />}
+          title="No relationships yet"
+          description="Create a relationship to link records between modules (e.g. Deal → Contacts, one-to-many or many-to-many)."
+          action={
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create relationship
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-2">
           {list.map((rel) => (

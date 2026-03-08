@@ -1,17 +1,180 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { modulesApi } from "@/lib/api";
 import type { Field } from "@/lib/api";
-import type { AutomationAction } from "./types";
+import type { AutomationAction, CreateRecordFieldMapping } from "./types";
 import { ACTION_OPTIONS } from "./types";
 import { Play, Plus, Trash2 } from "lucide-react";
+
+function CreateRecordActionParams({
+  action,
+  index,
+  fields,
+  modules,
+  moduleId,
+  disabled,
+  updateActionParams,
+}: {
+  action: AutomationAction;
+  index: number;
+  fields: Field[];
+  modules: { id: string; name: string }[];
+  moduleId?: string | null;
+  disabled?: boolean;
+  updateActionParams: (index: number, key: string, value: unknown) => void;
+}) {
+  const targetModuleId = (action.params?.targetModuleId as string) ?? "";
+  const fieldMapping = (action.params?.fieldMapping ?? []) as CreateRecordFieldMapping[];
+  const setOnCurrentRecord = action.params?.setOnCurrentRecord as { fieldKey: string } | undefined;
+  const [targetFields, setTargetFields] = useState<Field[]>([]);
+
+  useEffect(() => {
+    if (!targetModuleId) {
+      setTargetFields([]);
+      return;
+    }
+    modulesApi.get(targetModuleId).then((m) => setTargetFields(m.fields ?? [])).catch(() => setTargetFields([]));
+  }, [targetModuleId]);
+
+  const relationFields = fields.filter((f) => f.fieldType === "relation");
+
+  const updateMapping = (newMapping: CreateRecordFieldMapping[]) => {
+    updateActionParams(index, "fieldMapping", newMapping);
+  };
+
+  const addMapping = () => {
+    updateMapping([...fieldMapping, { targetFieldKey: "", sourceType: "field", sourceFieldKey: fields[0]?.fieldKey }]);
+  };
+
+  const setMapping = (idx: number, patch: Partial<CreateRecordFieldMapping>) => {
+    const next = [...fieldMapping];
+    next[idx] = { ...next[idx], ...patch };
+    updateMapping(next);
+  };
+
+  const removeMapping = (idx: number) => {
+    updateMapping(fieldMapping.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs text-muted-foreground block mb-1">Target module</label>
+        <select
+          value={targetModuleId}
+          onChange={(e) => updateActionParams(index, "targetModuleId", e.target.value || undefined)}
+          className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
+          disabled={disabled}
+        >
+          <option value="">Select module...</option>
+          {modules
+            .filter((m) => m.id !== moduleId)
+            .map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+        </select>
+        <p className="text-xs text-muted-foreground mt-1">Create a new record in this module using current record values.</p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-muted-foreground">Field mapping</label>
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={addMapping} disabled={disabled || !targetModuleId}>
+            <Plus className="h-3 w-3 mr-1" /> Add row
+          </Button>
+        </div>
+        {fieldMapping.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">Add rows to copy field values from the current record to the new record.</p>
+        )}
+        {fieldMapping.map((row, idx) => (
+          <div key={idx} className="flex flex-wrap items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
+            <select
+              value={row.targetFieldKey}
+              onChange={(e) => setMapping(idx, { targetFieldKey: e.target.value })}
+              className="rounded border border-input bg-background px-2 py-1 text-sm min-w-[120px]"
+              disabled={disabled}
+              title="Target field (on new record)"
+            >
+              <option value="">Target field</option>
+              {targetFields.map((f) => (
+                <option key={f.id} value={f.fieldKey}>{f.label}</option>
+              ))}
+            </select>
+            <span className="text-muted-foreground text-xs">←</span>
+            <select
+              value={row.sourceType}
+              onChange={(e) => setMapping(idx, { sourceType: e.target.value as "field" | "literal" })}
+              className="rounded border border-input bg-background px-2 py-1 text-sm w-20"
+              disabled={disabled}
+            >
+              <option value="field">Field</option>
+              <option value="literal">Literal</option>
+            </select>
+            {row.sourceType === "field" ? (
+              <select
+                value={row.sourceFieldKey ?? ""}
+                onChange={(e) => setMapping(idx, { sourceFieldKey: e.target.value || undefined })}
+                className="rounded border border-input bg-background px-2 py-1 text-sm min-w-[120px]"
+                disabled={disabled}
+                title="Source field (current record)"
+              >
+                <option value="">Source field</option>
+                {fields.map((f) => (
+                  <option key={f.id} value={f.fieldKey}>{f.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={String(row.literalValue ?? "")}
+                onChange={(e) => setMapping(idx, { literalValue: e.target.value })}
+                className="rounded border border-input bg-background px-2 py-1 text-sm min-w-[100px]"
+                placeholder="Value"
+                disabled={disabled}
+              />
+            )}
+            <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeMapping(idx)} disabled={disabled}>
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {relationFields.length > 0 && (
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1">Link new record to current record (optional)</label>
+          <select
+            value={setOnCurrentRecord?.fieldKey ?? ""}
+            onChange={(e) =>
+              updateActionParams(index, "setOnCurrentRecord", e.target.value ? { fieldKey: e.target.value } : undefined)
+            }
+            className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
+            disabled={disabled}
+          >
+            <option value="">Do not link</option>
+            {relationFields.map((f) => (
+              <option key={f.id} value={f.fieldKey}>{f.label} (relation)</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground mt-1">Set this relation field on the current record to the newly created record.</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface ActionBuilderProps {
   actions: AutomationAction[];
   fields: Field[];
   onChange: (actions: AutomationAction[]) => void;
   disabled?: boolean;
+  /** For create_record: list of modules (target module dropdown). Exclude current module if moduleId provided. */
+  modules?: { id: string; name: string }[];
+  /** Current module id (so we can exclude it from target list and show relation fields for setOnCurrentRecord) */
+  moduleId?: string | null;
 }
 
 export function ActionBuilder({
@@ -19,6 +182,8 @@ export function ActionBuilder({
   fields,
   onChange,
   disabled,
+  modules = [],
+  moduleId,
 }: ActionBuilderProps) {
   const addAction = () => {
     onChange([...actions, { type: "create_task", params: {} }]);
@@ -225,6 +390,18 @@ export function ActionBuilder({
                   </select>
                 </div>
               </div>
+            )}
+
+            {action.type === "create_record" && (
+              <CreateRecordActionParams
+                action={action}
+                index={i}
+                fields={fields}
+                modules={modules}
+                moduleId={moduleId}
+                disabled={disabled}
+                updateActionParams={updateActionParams}
+              />
             )}
           </div>
         ))}

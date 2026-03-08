@@ -6,6 +6,8 @@ import { automationsApi } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { Automation } from "@/lib/api";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Workflow, Plus } from "lucide-react";
 
 export default function AutomationsPage() {
@@ -20,24 +22,38 @@ export default function AutomationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Automations</h1>
-        <Button asChild>
-          <Link href="/automations/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New automation
-          </Link>
-        </Button>
+        {!loading && automations.length > 0 && (
+          <Button asChild>
+            <Link href="/automations/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New automation
+            </Link>
+          </Button>
+        )}
       </div>
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-48" />
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 rounded-lg" />
+            ))}
+          </div>
+        </div>
       ) : automations.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">No automations yet. Create workflows that trigger on record create/update or stage change.</p>
-            <Button asChild className="mt-4">
-              <Link href="/automations/new">Create automation</Link>
+        <EmptyState
+          icon={<Workflow className="h-12 w-12 text-muted-foreground" />}
+          title="No automations yet"
+          description="Create workflows that trigger on record create/update or stage change to automate tasks and notifications."
+          action={
+            <Button asChild>
+              <Link href="/automations/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Create automation
+              </Link>
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {automations.map((a) => (

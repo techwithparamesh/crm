@@ -10,12 +10,16 @@ import type { JwtPayload } from "../../middleware/authMiddleware.js";
 
 export async function register(input: RegisterInput) {
   const existingTenant = await prisma.tenant.findFirst({
-    where: { name: { equals: input.tenantName, mode: "insensitive" } },
+    where: { name: input.tenantName },
   });
   if (existingTenant) throw new Error("Tenant name already exists");
 
   const tenant = await prisma.tenant.create({
     data: { name: input.tenantName, plan: "free" },
+  });
+
+  await prisma.tenantSettings.create({
+    data: { tenantId: tenant.id },
   });
 
   const existingUser = await prisma.user.findFirst({
@@ -33,6 +37,11 @@ export async function register(input: RegisterInput) {
     },
   });
 
+  await prisma.tenant.update({
+    where: { id: tenant.id },
+    data: { ownerId: user.id },
+  });
+
   const defaultPlanId = await getDefaultPlanId();
   if (defaultPlanId) {
     createTrialSubscription(tenant.id, defaultPlanId).catch(() => {});
@@ -43,14 +52,25 @@ export async function register(input: RegisterInput) {
 }
 
 export async function login(input: LoginInput) {
+  let tenantId = input.tenantId?.trim();
+  if (!tenantId && input.tenantName?.trim()) {
+    const name = input.tenantName.trim();
+    const tenant = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM \`Tenant\` WHERE LOWER(name) = LOWER(${name}) LIMIT 1
+    `;
+    if (!tenant?.length) throw new Error("Organization not found");
+    tenantId = tenant[0].id;
+  }
+  if (!tenantId) throw new Error("Organization or Tenant ID required");
+
   const user = await prisma.user.findFirst({
     where: {
-      tenantId: input.tenantId,
+      tenantId,
       email: input.email.toLowerCase(),
     },
     include: { tenant: true, role: true },
   });
-  if (!user) throw new Error("Invalid email or tenant");
+  if (!user) throw new Error("Invalid email or organization");
 
   const valid = await bcrypt.compare(input.password, user.passwordHash);
   if (!valid) throw new Error("Invalid email or password");

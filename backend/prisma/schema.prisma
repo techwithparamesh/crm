@@ -16,9 +16,11 @@ model Tenant {
   id        String   @id @default(cuid())
   name      String
   plan      String   @default("free") // free | starter | growth | enterprise
+  ownerId   String?  @map("owner_id")  // workspace owner (first admin)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  owner     User?    @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   users       User[]
   roles       Role[]
   modules     Module[]
@@ -26,6 +28,7 @@ model Tenant {
   tasks       Task[]
   automations Automation[]
   dashboards  Dashboard[]
+  roleDashboards RoleDashboard[]
   moduleRelationships ModuleRelationship[]
   activityLogs ActivityLog[]
   settings   TenantSettings?
@@ -42,6 +45,15 @@ model Tenant {
   whatsappTemplates WhatsAppTemplate[]
   leadSources     LeadSource[]
   webForms        WebForm[]
+  searchIndexEntries SearchIndex[]
+  emailAccounts   EmailAccount[]
+  emailMessages   EmailMessage[]
+  activities      Activity[]
+  comments        Comment[]
+  assignmentRules  AssignmentRule[]
+  duplicateRules  DuplicateRule[]
+  reports         Report[]
+  integrations    Integration[]
 }
 
 model TenantSettings {
@@ -74,12 +86,17 @@ model User {
   updatedAt    DateTime @updatedAt
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownedWorkspaces Tenant[] @relation("WorkspaceOwner")
   role          Role?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
   recordsCreated Record[] @relation("CreatedBy")
+  recordsOwned  Record[] @relation("RecordOwner")
   tasksAssigned Task[]   @relation("AssignedTo")
   activityLogs  ActivityLog[]
+  activitiesCreated Activity[] @relation("ActivityCreatedBy")
+  activitiesAssigned Activity[] @relation("ActivityAssignedTo")
   apiTokensCreated ApiToken[] @relation("ApiTokenCreatedBy")
   notifications  Notification[]
+  comments       Comment[]
   filesUploaded  File[]
 
   @@unique([tenantId, email])
@@ -91,15 +108,37 @@ model Role {
   id             String   @id @default(cuid())
   tenantId       String
   name           String
-  permissionsJSON String?  @map("permissions_json") // JSON: { "modules": {...}, "pipelines": {...}, ... }
+  permissionsJSON String?  @map("permissions_json") // JSON: { "modules": {...}, "recordVisibility": "all"|"own", ... }
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users  User[]
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users     User[]
+  permissions RolePermission[]
+  roleDashboards RoleDashboard[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
+}
+
+// Per-module CRUD permissions (optional; when set overrides permissionsJSON for that module)
+model RolePermission {
+  id         String   @id @default(cuid())
+  roleId     String
+  moduleId   String
+  canCreate  Boolean  @default(true) @map("can_create")
+  canRead    Boolean  @default(true) @map("can_read")
+  canUpdate  Boolean  @default(true) @map("can_update")
+  canDelete  Boolean  @default(true) @map("can_delete")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, moduleId])
+  @@index([roleId])
+  @@index([moduleId])
 }
 
 // ============== MODULES & FIELDS (METADATA) ==============
@@ -111,6 +150,9 @@ model Module {
   slug        String
   icon        String?  @default("folder")
   description String?
+  isSystem    Boolean  @default(false) @map("is_system")   // system modules (e.g. base Contacts) not user-deletable
+  isTemplate  Boolean  @default(false) @map("is_template") // created from template
+  orderIndex  Int      @default(0) @map("order_index")    // display order in workspace
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -119,29 +161,37 @@ model Module {
   records  Record[]
   pipelines Pipeline[]
   automations Automation[]
+  views    View[]
   relationshipsAsSource ModuleRelationship[] @relation("SourceModule")
   relationshipsAsTarget ModuleRelationship[] @relation("TargetModule")
   leadSources LeadSource[]
   webForms    WebForm[]
+  rolePermissions RolePermission[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
+  @@index([tenantId, orderIndex])
 }
 
 model Field {
-  id           String   @id @default(cuid())
-  moduleId     String
-  tenantId     String
-  label        String
-  fieldKey     String   // unique per module, used in RecordValue lookups
-  fieldType    String   // text | number | email | phone | textarea | dropdown | multi_select | checkbox | date | currency | file | boolean
-  isRequired   Boolean  @default(false)
-  isUnique     Boolean  @default(false)
-  optionsJSON  String?  @map("options_json")  // for dropdown/multi_select: ["A","B"] or { "choices": [...] }
-  defaultValue String?  @map("default_value")
-  orderIndex   Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  moduleId          String
+  tenantId          String
+  name              String?  // optional internal name (defaults to label/fieldKey)
+  label             String
+  fieldKey          String   // unique per module, used in RecordValue lookups
+  fieldType         String   // text | textarea | number | email | phone | date | currency | checkbox | select | multiselect | file | relation | user
+  isRequired        Boolean  @default(false)
+  isUnique          Boolean  @default(false)
+  isSystem          Boolean  @default(false) @map("is_system")   // template/system field, restrict delete
+  isSearchable      Boolean  @default(true) @map("is_searchable")
+  isFilterable      Boolean  @default(true) @map("is_filterable")
+  optionsJSON       String?  @map("options_json")  // for select/multiselect: ["A","B"]
+  relationModuleId  String?  @map("relation_module_id")  // for fieldType relation: target module id
+  defaultValue     String?  @map("default_value")
+  orderIndex        Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   module  Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   values  RecordValue[]
@@ -151,6 +201,23 @@ model Field {
   @@index([tenantId])
 }
 
+// ============== VIEWS (per-module: Table, Kanban, Calendar, List) ==============
+
+model View {
+  id         String   @id @default(cuid())
+  moduleId   String
+  name       String   // e.g. "All Leads", "My Pipeline"
+  viewType   String   @map("view_type")  // table | kanban | calendar | list
+  configJSON String?  @map("config_json") // columns, filters, sort, groupBy (for kanban), dateField (for calendar)
+  orderIndex Int      @default(0) @map("order_index")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([moduleId])
+}
+
 // ============== RECORDS (EAV DATA) ==============
 
 model Record {
@@ -158,14 +225,20 @@ model Record {
   moduleId         String
   tenantId         String
   createdBy        String?
+  ownerId          String?  @map("owner_id")   // record ownership (My Leads, My Deals)
   pipelineStageId  String?  @map("pipeline_stage_id")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   module  Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   creator User?        @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  owner   User?        @relation("RecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   stage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
   values  RecordValue[]
+  searchIndexEntries SearchIndex[]
+  emailMessages  EmailMessage[]
+  activities     Activity[]
+  comments       Comment[]
   tasks   Task[]
   recordRelationsAsSource RecordRelation[] @relation("SourceRecord")
   recordRelationsAsTarget RecordRelation[] @relation("TargetRecord")
@@ -179,7 +252,9 @@ model Record {
   @@index([moduleId])
   @@index([pipelineStageId])
   @@index([createdBy])
+  @@index([ownerId])
   @@index([tenantId, moduleId])
+  @@index([tenantId, moduleId, ownerId])
   @@index([tenantId, moduleId, updatedAt])
   @@index([tenantId, createdAt])
 }
@@ -289,8 +364,27 @@ model Dashboard {
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   widgets Widget[]
+  roleDashboards RoleDashboard[]
 
   @@index([tenantId])
+}
+
+// Role-based dashboard: which dashboard to show for a role (e.g. Admin dashboard, Sales dashboard)
+model RoleDashboard {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  roleId      String   @map("role_id")
+  dashboardId String   @map("dashboard_id")
+  orderIndex  Int      @default(0) @map("order_index")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role     Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  dashboard Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, dashboardId])
+  @@index([tenantId])
+  @@index([roleId])
 }
 
 model Widget {
@@ -352,8 +446,9 @@ model ActivityLog {
   id           String   @id @default(cuid())
   tenantId     String
   recordId     String   @map("record_id")
-  userId       String?  @map("user_id")
+  userId       String?  @map("user_id")   // createdBy (Record Activity timeline)
   eventType    String   @map("event_type") // record_created | record_updated | stage_changed | task_created | note_added
+  message      String?  // human-readable message for timeline (e.g. "Lead created", "Status changed to Qualified")
   metadataJSON String?  @map("metadata_json") // { stageName?, taskId?, previousStageName?, etc. }
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -364,6 +459,179 @@ model ActivityLog {
   @@index([tenantId])
   @@index([recordId])
   @@index([recordId, createdAt])
+}
+
+// ============== GLOBAL SEARCH INDEX ==============
+
+model SearchIndex {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  moduleId  String   @map("module_id")
+  recordId  String   @map("record_id")
+  title     String   @db.VarChar(500)
+  content   String   @db.LongText
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, moduleId])
+  @@index([recordId])
+}
+
+// ============== EMAIL INTEGRATION (Accounts + Messages) ==============
+
+model EmailAccount {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  provider     String   @map("provider")  // gmail | outlook | smtp
+  emailAddress String  @map("email_address")
+  accessToken  String?  @map("access_token") @db.LongText
+  refreshToken String?  @map("refresh_token") @db.LongText
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model EmailMessage {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  recordId  String?  @map("record_id")
+  from      String   @map("from_address") @db.VarChar(500)
+  to        String   @map("to_address") @db.VarChar(500)
+  subject   String   @map("subject") @db.VarChar(1000)
+  body      String   @map("body") @db.LongText
+  status    String   @default("sent") @map("status")  // sent | failed | draft
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([recordId])
+}
+
+// ============== ADVANCED ACTIVITY (task, call, meeting, email, reminder) ==============
+
+model Activity {
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  recordId    String    @map("record_id")
+  type        String    @map("type")  // task | call | meeting | email | reminder
+  title       String    @map("title")
+  description String?   @map("description") @db.LongText
+  dueDate     DateTime? @map("due_date")
+  assignedTo  String?   @map("assigned_to")
+  status      String    @default("pending") @map("status")  // pending | completed | cancelled
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record   Record  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("ActivityAssignedTo", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator  User?   @relation("ActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([recordId])
+  @@index([assignedTo])
+  @@index([tenantId, assignedTo])
+}
+
+// ============== COMMENTS / COLLABORATION ==============
+
+model Comment {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  recordId  String   @map("record_id")
+  userId    String   @map("user_id")
+  message   String   @map("message") @db.LongText
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([recordId])
+}
+
+// ============== LEAD ASSIGNMENT RULES ==============
+
+model AssignmentRule {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  moduleId       String   @map("module_id")
+  name           String   @map("name")
+  conditionsJSON String   @map("conditions_json")  // [{ "field": "country", "op": "eq", "value": "India" }]
+  assignToUserId String?  @map("assign_to_user_id")
+  assignToTeamId String?  @map("assign_to_team_id")  // future: Team model
+  orderIndex     Int      @default(0) @map("order_index")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+// ============== DUPLICATE DETECTION ==============
+
+model DuplicateRule {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  moduleId  String   @map("module_id")
+  fieldKey  String   @map("field_key")  // email | phone | company (field key to match)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleId, fieldKey])
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+// ============== REPORTING ENGINE ==============
+
+model Report {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @map("name")
+  moduleId    String   @map("module_id")
+  filtersJSON String?  @map("filters_json")
+  groupBy    String?  @map("group_by")
+  metrics    String?  @map("metrics")  // JSON array of metric definitions
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([moduleId])
+}
+
+// ============== INTEGRATION LAYER ==============
+
+model Integration {
+  id         String   @id @default(cuid())
+  tenantId   String   @map("tenant_id")
+  provider   String   @map("provider")  // whatsapp | stripe | razorpay | google_calendar | slack
+  configJSON String?  @map("config_json")
+  status     String   @default("active") @map("status")  // active | inactive | error
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, provider])
 }
 
 // ============== API INTEGRATION ==============
@@ -450,10 +718,11 @@ model Notification {
   id         String    @id @default(cuid())
   tenantId   String    @map("tenant_id")
   userId     String    @map("user_id")
-  type       String    @map("type")   // task_assigned | record_created | stage_changed | automation_triggered
+  type       String    @map("type")   // task_assigned | record_created | stage_changed | comment_added
   title      String    @map("title")
   message    String?   @map("message")
-  entityType String?   @map("entity_type")  // task | record | automation
+  link       String?   @map("link")  // deep link to record/task etc.
+  entityType String?   @map("entity_type")
   entityId   String?   @map("entity_id")
   metadataJSON String? @map("metadata_json")
   readAt     DateTime? @map("read_at")
@@ -513,6 +782,7 @@ model File {
   recordId   String   @map("record_id")
   fileName   String   @map("file_name")
   fileUrl    String   @map("file_url")
+  fileType   String?  @map("file_type")  // MIME or extension for S3-compatible storage
   uploadedBy String?  @map("uploaded_by")
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -736,10 +1006,12 @@ model FormSubmission {
 model CrmTemplate {
   id           String   @id @default(cuid())
   name         String   @map("name")
+  category     String?  @map("category")  // Sales | Finance | Healthcare | Education | Real Estate | Marketing | Ecommerce | Support | HR
   description  String?  @map("description")
   icon         String?  @map("icon")
-  templateJSON String   @map("template_json")
+  templateJSON String   @map("template_json") @db.LongText
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@index([name])
+  @@index([category])
 }

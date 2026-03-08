@@ -44,6 +44,51 @@ npm run dev
 
 App runs at **http://localhost:3000**.
 
+### Using your own logo image
+
+To use your own Applyn CRM logo (e.g. the one you designed) instead of the built-in SVG:
+
+1. **Put your logo file here:**  
+   `frontend/public/logo.png`  
+   (Same folder as this project’s `frontend` → `public`.)
+
+2. **Name the file exactly:** `logo.png`  
+   For SVG or WebP, use `logo.svg` or `logo.webp` and in `frontend/.env.local` add:  
+   `NEXT_PUBLIC_LOGO_FILENAME=logo.svg` (or `logo.webp`).
+
+3. **Restart the frontend** so it picks up the new file:  
+   Stop the dev server (Ctrl+C), then run `npm run dev` again in the `frontend` folder.
+
+The logo is used in the **sidebar** (top left) and on the **login/register** page. If the file is missing or fails to load, the default Applyn CRM logo is shown.
+
+### Seeing UI changes (logo, gradients, new design)
+
+To run the app and see the latest UI (Applyn CRM logo, purple/indigo gradients, new cards):
+
+```bash
+# Terminal 1 – backend
+cd backend
+npm run dev
+
+# Terminal 2 – frontend
+cd frontend
+npm run dev
+```
+
+Then open **http://localhost:3000** in your browser.
+
+If you don’t see the new design (logo, colors, gradients):
+
+1. **Hard refresh** the page: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac).
+2. **Clear Next.js cache** and restart the frontend:
+   ```bash
+   cd frontend
+   rm -rf .next
+   npm run dev
+   ```
+   (On Windows PowerShell: `Remove-Item -Recurse -Force .next` then `npm run dev`.)
+3. Confirm you’re on the **dashboard** (sidebar with “Dashboard”, “Modules”, etc.). The **Applyn CRM** logo and name appear at the top of the sidebar.
+
 ## 5. First use
 
 1. Open **http://localhost:3000**. You’ll be redirected to **/dashboard** (then to **/login** if not authenticated).

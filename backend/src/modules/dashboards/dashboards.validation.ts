@@ -4,6 +4,10 @@ export const createDashboardSchema = z.object({
   name: z.string().min(1),
 });
 
+export const updateDashboardSchema = z.object({
+  name: z.string().min(1).optional(),
+});
+
 export const createWidgetSchema = z.object({
   dashboardId: z.string().min(1),
   widgetType: z.string().min(1),
@@ -18,5 +22,6 @@ export const updateWidgetSchema = z.object({
 });
 
 export type CreateDashboardInput = z.infer<typeof createDashboardSchema>;
+export type UpdateDashboardInput = z.infer<typeof updateDashboardSchema>;
 export type CreateWidgetInput = z.infer<typeof createWidgetSchema>;
 export type UpdateWidgetInput = z.infer<typeof updateWidgetSchema>;

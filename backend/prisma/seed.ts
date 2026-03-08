@@ -43,6 +43,16 @@ async function main() {
     tenant = await prisma.tenant.create({
       data: { name: "Acme Corp", plan: "free" },
     });
+    await prisma.tenantSettings.create({
+      data: { tenantId: tenant.id },
+    });
+  } else {
+    const existingSettings = await prisma.tenantSettings.findUnique({ where: { tenantId: tenant.id } });
+    if (!existingSettings) {
+      await prisma.tenantSettings.create({
+        data: { tenantId: tenant.id },
+      });
+    }
   }
 
   let role = await prisma.role.findFirst({ where: { tenantId: tenant.id, name: "Admin" } });
@@ -70,25 +80,8 @@ async function main() {
     });
   }
 
-  let mod = await prisma.module.findFirst({ where: { tenantId: tenant.id, slug: "leads" } });
-  if (!mod) {
-    mod = await prisma.module.create({
-      data: {
-        tenantId: tenant.id,
-        name: "Leads",
-        slug: "leads",
-        icon: "user-plus",
-        description: "Incoming leads",
-      },
-    });
-    await prisma.field.createMany({
-      data: [
-        { moduleId: mod.id, tenantId: tenant.id, label: "Name", fieldKey: "name", fieldType: "text", isRequired: true, orderIndex: 0 },
-        { moduleId: mod.id, tenantId: tenant.id, label: "Email", fieldKey: "email", fieldType: "email", orderIndex: 1 },
-        { moduleId: mod.id, tenantId: tenant.id, label: "Status", fieldKey: "status", fieldType: "dropdown", optionsJSON: JSON.stringify(["New", "Contacted", "Qualified"]), orderIndex: 2 },
-      ],
-    });
-  }
+  // No default modules created — tenants start with an empty Modules list.
+  // Create modules via "+ New module" or install a template from Templates.
 
   for (const t of TEMPLATES) {
     const existing = await prisma.crmTemplate.findFirst({ where: { name: t.name } });
@@ -96,6 +89,7 @@ async function main() {
       await prisma.crmTemplate.create({
         data: {
           name: t.name,
+          category: t.category ?? null,
           description: t.description,
           icon: t.icon,
           templateJSON: JSON.stringify(t.json),
@@ -105,7 +99,7 @@ async function main() {
     }
   }
 
-  console.log("Seed done:", { tenant: tenant.name, module: mod.slug });
+  console.log("Seed done:", { tenant: tenant.name });
 }
 
 main()

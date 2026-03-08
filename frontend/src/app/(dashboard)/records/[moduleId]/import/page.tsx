@@ -113,6 +113,9 @@ export default function ImportPage() {
     }, 2000);
   };
 
+  const stepOrder: Step[] = ["upload", "map", "result"];
+  const currentStepIndex = stepOrder.indexOf(step);
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center gap-4">
@@ -121,7 +124,16 @@ export default function ImportPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold">Import CSV</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Import CSV</h1>
+          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+            <span className={currentStepIndex >= 0 ? "text-foreground font-medium" : ""}>1. Upload</span>
+            <span>→</span>
+            <span className={currentStepIndex >= 1 ? "text-foreground font-medium" : ""}>2. Map columns</span>
+            <span>→</span>
+            <span className={currentStepIndex >= 2 ? "text-foreground font-medium" : ""}>3. Import</span>
+          </div>
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

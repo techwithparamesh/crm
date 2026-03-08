@@ -7,8 +7,16 @@ export interface AutomationCondition {
 
 /** Action row for actionsJSON array */
 export interface AutomationAction {
-  type: "create_task" | "send_email" | "send_webhook" | "update_field";
+  type: "create_task" | "send_email" | "send_webhook" | "update_field" | "create_record";
   params?: Record<string, unknown>;
+}
+
+/** Field mapping row for create_record action */
+export interface CreateRecordFieldMapping {
+  targetFieldKey: string;
+  sourceType: "field" | "literal";
+  sourceFieldKey?: string;
+  literalValue?: unknown;
 }
 
 export const TRIGGER_OPTIONS = [
@@ -32,6 +40,7 @@ export const CONDITION_OPERATORS = [
 
 export const ACTION_OPTIONS = [
   { value: "create_task", label: "Create task" },
+  { value: "create_record", label: "Create record in module" },
   { value: "send_email", label: "Send email" },
   { value: "update_field", label: "Update field" },
   { value: "send_webhook", label: "Webhook" },

@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, Controller } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { Field } from "@/lib/api";
+import { recordsApi, usersApi } from "@/lib/api";
 import { parseOptions } from "./field-config";
 
 export { buildDefaultValues } from "./field-config";
@@ -182,6 +184,91 @@ export function DynamicField({ field, className, fullWidth, disabled }: DynamicF
           {error && <p className="text-xs text-destructive">{String(error.message)}</p>}
         </div>
       );
+
+    case "relation": {
+      const relationModuleId = field.relationModuleId ?? "";
+      const { data: listData } = useQuery({
+        queryKey: ["records", relationModuleId, "relation"],
+        queryFn: () => recordsApi.list(relationModuleId, { limit: 200 }),
+        enabled: !!relationModuleId,
+      });
+      const options = listData?.items ?? [];
+      const displayLabel = (r: { id: string; values: Record<string, unknown> }) => {
+        const v = r.values;
+        const nameLike = (v?.name ?? v?.title ?? v?.applicant_name ?? v?.customer_name ?? v?.contact_name) as string | undefined;
+        if (nameLike != null && nameLike !== "") return String(nameLike);
+        const first = Object.values(v ?? {}).find((x) => typeof x === "string" && x !== "");
+        return first != null ? String(first) : r.id;
+      };
+      return (
+        <div className={wrapperClass}>
+          <Label htmlFor={name} required={field.isRequired}>
+            {field.label}
+          </Label>
+          <Controller
+            name={name}
+            rules={{ required: field.isRequired ? `${field.label} is required` : false }}
+            render={({ field: f }) => (
+              <select
+                id={name}
+                value={f.value ?? ""}
+                onChange={(e) => f.onChange(e.target.value || undefined)}
+                onBlur={f.onBlur}
+                className={cn(inputBase, "cursor-pointer")}
+                disabled={disabled || !relationModuleId}
+              >
+                <option value="">Select...</option>
+                {options.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {displayLabel(r)}
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          {!relationModuleId && (
+            <p className="text-xs text-muted-foreground">Configure a related module in module settings.</p>
+          )}
+          {error && <p className="text-xs text-destructive">{String(error.message)}</p>}
+        </div>
+      );
+    }
+
+    case "user": {
+      const { data: users = [] } = useQuery({
+        queryKey: ["users"],
+        queryFn: () => usersApi.list(),
+      });
+      return (
+        <div className={wrapperClass}>
+          <Label htmlFor={name} required={field.isRequired}>
+            {field.label}
+          </Label>
+          <Controller
+            name={name}
+            rules={{ required: field.isRequired ? `${field.label} is required` : false }}
+            render={({ field: f }) => (
+              <select
+                id={name}
+                value={f.value ?? ""}
+                onChange={(e) => f.onChange(e.target.value || undefined)}
+                onBlur={f.onBlur}
+                className={cn(inputBase, "cursor-pointer")}
+                disabled={disabled}
+              >
+                <option value="">Select user...</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.email})
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          {error && <p className="text-xs text-destructive">{String(error.message)}</p>}
+        </div>
+      );
+    }
 
     default:
       return (

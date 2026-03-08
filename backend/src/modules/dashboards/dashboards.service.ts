@@ -1,5 +1,5 @@
 import { prisma } from "../../prisma/client.js";
-import type { CreateDashboardInput, CreateWidgetInput, UpdateWidgetInput } from "./dashboards.validation.js";
+import type { CreateDashboardInput, UpdateDashboardInput, CreateWidgetInput, UpdateWidgetInput } from "./dashboards.validation.js";
 
 export async function createDashboard(tenantId: string, input: CreateDashboardInput) {
   return prisma.dashboard.create({
@@ -22,6 +22,21 @@ export async function getDashboardById(tenantId: string, id: string) {
   });
   if (!d) throw new Error("Dashboard not found");
   return d;
+}
+
+export async function updateDashboard(tenantId: string, id: string, input: UpdateDashboardInput) {
+  const d = await prisma.dashboard.findFirst({ where: { id, tenantId } });
+  if (!d) throw new Error("Dashboard not found");
+  return prisma.dashboard.update({
+    where: { id },
+    data: input,
+  });
+}
+
+export async function deleteDashboard(tenantId: string, id: string) {
+  const d = await prisma.dashboard.findFirst({ where: { id, tenantId } });
+  if (!d) throw new Error("Dashboard not found");
+  return prisma.dashboard.delete({ where: { id } });
 }
 
 export async function createWidget(tenantId: string, input: CreateWidgetInput) {

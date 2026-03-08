@@ -14,8 +14,7 @@ export interface GlobalSearchResult {
 }
 
 /**
- * Global search across all modules using MySQL LIKE.
- * Only searches searchable field types (text, textarea, email, phone, dropdown).
+ * Global search: uses SearchIndex table when possible (faster), falls back to EAV LIKE search.
  * Returns results grouped by module slug.
  */
 export async function globalSearch(
@@ -27,26 +26,44 @@ export async function globalSearch(
   if (!trimmed) return {};
 
   const likePattern = `%${escapeLike(trimmed)}%`;
-  const placeholders = SEARCHABLE_FIELD_TYPES.map(() => "?").join(",");
 
-  type Row = { recordId: string; moduleId: string };
-  const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `SELECT DISTINCT r.id AS recordId, r.moduleId
-     FROM \`Record\` r
-     INNER JOIN \`RecordValue\` rv ON rv.recordId = r.id
-     INNER JOIN \`Field\` f ON f.id = rv.fieldId
-       AND f.fieldType IN (${placeholders})
-     WHERE r.tenantId = ?
-       AND (
-         (rv.value_text IS NOT NULL AND rv.value_text != '' AND rv.value_text LIKE ?)
-         OR (rv.value_json IS NOT NULL AND rv.value_json != '' AND rv.value_json LIKE ?)
-       )
-     LIMIT 500`,
-    ...SEARCHABLE_FIELD_TYPES,
-    tenantId,
-    likePattern,
-    likePattern
-  );
+  // Prefer SearchIndex when we have indexed rows (faster)
+  const indexRows = await prisma.searchIndex.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { title: { contains: trimmed } },
+        { content: { contains: trimmed } },
+      ],
+    },
+    select: { recordId: true, moduleId: true },
+    take: 500,
+  });
+
+  let rows: { recordId: string; moduleId: string }[];
+  if (indexRows.length > 0) {
+    rows = indexRows.map((r) => ({ recordId: r.recordId, moduleId: r.moduleId }));
+  } else {
+    const placeholders = SEARCHABLE_FIELD_TYPES.map(() => "?").join(",");
+    type Row = { recordId: string; moduleId: string };
+    rows = await prisma.$queryRawUnsafe<Row[]>(
+      `SELECT DISTINCT r.id AS recordId, r.moduleId
+       FROM \`Record\` r
+       INNER JOIN \`RecordValue\` rv ON rv.recordId = r.id
+       INNER JOIN \`Field\` f ON f.id = rv.fieldId
+         AND f.fieldType IN (${placeholders})
+       WHERE r.tenantId = ?
+         AND (
+           (rv.value_text IS NOT NULL AND rv.value_text != '' AND rv.value_text LIKE ?)
+           OR (rv.value_json IS NOT NULL AND rv.value_json != '' AND rv.value_json LIKE ?)
+         )
+       LIMIT 500`,
+      ...SEARCHABLE_FIELD_TYPES,
+      tenantId,
+      likePattern,
+      likePattern
+    );
+  }
 
   if (rows.length === 0) return {};
 

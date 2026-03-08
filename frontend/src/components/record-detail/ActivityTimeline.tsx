@@ -159,7 +159,7 @@ export function ActivityTimeline({ recordId, record, refreshKey, className }: Ac
                 {getEventIcon(entry.eventType)}
               </span>
               <div className="flex-1 min-w-0 pt-0.5">
-                <p className="text-sm font-medium">{getEventLabel(entry)}</p>
+                <p className="text-sm font-medium">{entry.message?.trim() || getEventLabel(entry)}</p>
                 <p className="text-xs text-muted-foreground">{formatDate(entry.createdAt)}</p>
                 {entry.user?.name && (
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">

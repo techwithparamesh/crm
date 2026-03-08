@@ -13,8 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTenantBranding } from "@/hooks/useTenantBranding";
+import { ApplynLogoOrCustom } from "@/components/brand/ApplynLogoOrCustom";
 
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1), tenantId: z.string().min(1, "Select or enter tenant") });
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  tenantName: z.string().min(1, "Enter your organization name"),
+});
 const registerSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
@@ -37,16 +42,15 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
-  const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "", tenantId: "" } });
+  const loginForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: "", password: "", tenantName: "" } });
   const registerForm = useForm<RegisterForm>({ resolver: zodResolver(registerSchema), defaultValues: { name: "", email: "", password: "", tenantName: "" } });
-  const loginTenantId = loginForm.watch("tenantId");
-  const { companyName, logoUrl, primaryColor } = useTenantBranding(mode === "login" ? loginTenantId || null : null);
+  const { companyName, logoUrl, primaryColor } = useTenantBranding(null);
   const logoSrc = resolveLogoUrl(logoUrl);
 
   const onLogin = async (data: LoginForm) => {
     setError("");
     try {
-      const res = await authApi.login({ email: data.email, password: data.password, tenantId: data.tenantId });
+      const res = await authApi.login({ email: data.email, password: data.password, tenantName: data.tenantName });
       setAuth(res.token, res.user as AuthUser, res.tenant);
       router.push("/dashboard");
     } catch (e) {
@@ -69,13 +73,13 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex flex-col items-center gap-2 mb-2">
+          <div className="flex flex-col items-center gap-3 mb-2">
             {logoSrc ? (
               <Image src={logoSrc} alt={companyName} width={48} height={48} className="object-contain" unoptimized />
             ) : (
-              <div className="w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold text-white" style={{ backgroundColor: primaryColor }}>{companyName.slice(0, 1)}</div>
+              <ApplynLogoOrCustom size={56} showText={true} textSize="lg" />
             )}
-            <CardTitle className="text-xl" style={{ color: primaryColor }}>{companyName}</CardTitle>
+            {logoSrc && <CardTitle className="text-xl" style={{ color: primaryColor }}>{companyName}</CardTitle>}
           </div>
           <CardTitle className="text-base font-normal text-muted-foreground">{mode === "login" ? "Sign in" : "Create account"}</CardTitle>
         </CardHeader>
@@ -84,9 +88,9 @@ export default function LoginPage() {
           {mode === "login" ? (
             <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
               <div>
-                <Label>Tenant ID</Label>
-                <Input {...loginForm.register("tenantId")} placeholder="Your tenant ID (from registration)" className="mt-1" />
-                {loginForm.formState.errors.tenantId && <p className="text-xs text-destructive mt-1">{loginForm.formState.errors.tenantId.message}</p>}
+                <Label>Organization name</Label>
+                <Input {...loginForm.register("tenantName")} placeholder="e.g. Acme Corp, Express Financial" className="mt-1" />
+                {loginForm.formState.errors.tenantName && <p className="text-xs text-destructive mt-1">{loginForm.formState.errors.tenantName.message}</p>}
               </div>
               <div>
                 <Label>Email</Label>
@@ -104,7 +108,7 @@ export default function LoginPage() {
             <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
               <div>
                 <Label>Organization name</Label>
-                <Input {...registerForm.register("tenantName")} placeholder="Acme Corp" className="mt-1" />
+                <Input {...registerForm.register("tenantName")} placeholder="e.g. Acme Corp, Sunnyvale School" className="mt-1" />
                 {registerForm.formState.errors.tenantName && <p className="text-xs text-destructive mt-1">{registerForm.formState.errors.tenantName.message}</p>}
               </div>
               <div>

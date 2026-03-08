@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { recordsApi } from "@/lib/api";
+import { useAuthStore } from "@/store/auth-store";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { WidgetConfig } from "./types";
 
@@ -13,6 +14,7 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
   const [value, setValue] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
     if (!config.moduleId) {
@@ -22,10 +24,22 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
     }
     setLoading(true);
     setError(null);
+    const filters = config.filters ?? {};
+    const useCurrentUser = config.scopeOwn || filters.ownerId === "CURRENT_USER";
+    let dateFrom = config.dateFrom;
+    let dateTo = config.dateTo;
+    if (filters.date === "THIS_MONTH" || config.dateRange === "THIS_MONTH") {
+      const now = new Date();
+      dateFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      dateTo = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    }
     recordsApi
       .list(config.moduleId, {
-        limit: 1000,
+        limit: 500,
         stageId: config.filters?.stageId,
+        ...(useCurrentUser && userId ? { ownerId: userId } : {}),
+        ...(dateFrom ? { dateFrom } : {}),
+        ...(dateTo ? { dateTo } : {}),
       })
       .then((res) => {
         const items = res.items;
@@ -47,11 +61,11 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
         else if (type === "average") setValue(nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0);
         else setValue(res.total);
       })
-      .catch(() => setError("Failed to load"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, [config.moduleId, config.filters?.stageId, config.metricType, config.valueField]);
+  }, [config.moduleId, config.filters, config.metricType, config.valueField, config.scopeOwn, config.dateFrom, config.dateTo, config.dateRange, userId]);
 
-  if (!config.moduleId) return <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Select a module in widget config.</p></CardContent></Card>;
+  if (!config.moduleId) return <Card className="border-dashed"><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Configure this widget: choose a module and metric type in the widget settings.</p></CardContent></Card>;
   if (error) return <Card><CardContent className="pt-6"><p className="text-sm text-destructive">{error}</p></CardContent></Card>;
 
   return (

@@ -12,3 +12,7 @@ export { SendEmailSection } from "./SendEmailSection";
 export type { SendEmailSectionProps } from "./SendEmailSection";
 export { RecordFilesSection } from "./RecordFilesSection";
 export type { RecordFilesSectionProps } from "./RecordFilesSection";
+export { CommentsSection } from "./CommentsSection";
+export type { CommentsSectionProps } from "./CommentsSection";
+export { ActivityPanel } from "./ActivityPanel";
+export type { ActivityPanelProps } from "./ActivityPanel";

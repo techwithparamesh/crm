@@ -16,10 +16,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!isAuthenticated() && pathname !== "/login") router.push("/login");
-  }, [isAuthenticated, pathname, router]);
+    if (!mounted) return;
+    if (!isAuthenticated && pathname !== "/login") router.push("/login");
+  }, [mounted, isAuthenticated, pathname, router]);
 
   useEffect(() => {
     if (token && tenant) {
@@ -33,14 +37,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setSidebarOpen(false);
   }, [pathname]);
 
-  if (!isAuthenticated()) return null;
+  if (!mounted || !isAuthenticated) return null;
 
   return (
     <div className="flex h-screen overflow-hidden">
       <ResponsiveSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-auto p-4 sm:p-6 bg-muted/20 pb-20 md:pb-6">{children}</main>
+        <main className="flex-1 overflow-auto px-4 sm:px-8 py-6 bg-background pb-20 md:pb-6">{children}</main>
       </div>
       <MobileBottomNav />
     </div>

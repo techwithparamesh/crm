@@ -3,7 +3,7 @@ import "./globals.css";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
-  title: "Dynamic CRM",
+  title: "Applyn CRM",
   description: "Metadata-driven multi-tenant CRM",
 };
 

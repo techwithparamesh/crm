@@ -8,13 +8,9 @@ import { useAuthStore } from "@/store/auth-store";
 import { canEditRecord, canDeleteRecord } from "@/lib/permissions";
 import { DynamicFormRenderer, buildDefaultValues } from "@/components/forms";
 import {
-  ActivityTimeline,
-  RelatedTasks,
-  NotesSection,
-  AttachmentsSection,
+  ActivityPanel,
   RelatedRecordsSection,
-  SendEmailSection,
-  RecordFilesSection,
+  AttachmentsSection,
   type AttachmentItem,
 } from "@/components/record-detail";
 import { WhatsAppChatPanel } from "@/components/whatsapp";
@@ -22,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { RecordDetail } from "@/lib/api";
 import type { ModuleWithFields } from "@/lib/api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 
 const NOTES_FIELD_KEY = "notes";
 const ATTACHMENTS_FIELD_KEY = "attachments";
@@ -36,6 +32,7 @@ export default function RecordDetailPage() {
   const [moduleData, setModuleData] = useState<ModuleWithFields | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState(false);
   const [activityRefresh, setActivityRefresh] = useState(0);
   const recordCreatedBy = record?.creator?.id ?? null;
   const canEdit = record && user ? canEditRecord(user.permissions ?? null, record.moduleId, recordCreatedBy, user.id) : false;
@@ -51,12 +48,19 @@ export default function RecordDetailPage() {
     }
   }, [record?.moduleId]);
 
+  const showSaved = () => {
+    setSavedFeedback(true);
+    setTimeout(() => setSavedFeedback(false), 2000);
+  };
+
   const handleSaveValues = async (values: Record<string, unknown>) => {
     setError("");
     setSaving(true);
     try {
       const updated = await recordsApi.update(recordId, { values });
       setRecord(updated);
+      setActivityRefresh((n) => n + 1);
+      showSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update");
     } finally {
@@ -71,12 +75,37 @@ export default function RecordDetailPage() {
         values: { ...record?.values, [fieldKey]: value },
       });
       setRecord(updated);
+      setActivityRefresh((n) => n + 1);
+      showSaved();
     } finally {
       setSaving(false);
     }
   };
 
-  if (!record) return <p className="text-muted-foreground">Loading...</p>;
+  if (!record) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 rounded-md bg-muted animate-pulse" />
+          <div className="space-y-1">
+            <div className="h-6 w-48 bg-muted rounded animate-pulse" />
+            <div className="h-4 w-32 bg-muted rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="h-20 bg-muted rounded-lg animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-2">
+            <div className="h-6 w-24 bg-muted rounded animate-pulse" />
+            <div className="h-32 bg-muted rounded animate-pulse" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-6 w-24 bg-muted rounded animate-pulse" />
+            <div className="h-24 bg-muted rounded animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const moduleId = record.moduleId;
   const attachmentsFieldKey =
@@ -94,49 +123,103 @@ export default function RecordDetailPage() {
         f.fieldKey !== ATTACHMENTS_FIELD_KEY
     ) ?? [];
 
+  // Business-card fields: name, phone, email (or first few text/phone/email)
+  const keyFieldKeys = ["name", "full_name", "phone", "email", "mobile", "company"];
+  const businessCardFields =
+    moduleData?.fields.filter(
+      (f) =>
+        formFields.some((ff) => ff.id === f.id) &&
+        (keyFieldKeys.includes(f.fieldKey) ||
+          ["text", "phone", "email"].includes(f.fieldType))
+    ) ?? [];
+  const cardFields = businessCardFields.slice(0, 4);
+
+  const recordName = record.values?.name ?? record.values?.full_name ?? record.module?.name ?? "Record";
+  const recordStage = record.stage?.stageName;
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-          <Button variant="ghost" size="icon" asChild className="shrink-0">
-            <Link href={`/records/${moduleId}`}>
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-2xl font-bold truncate">
-              {record.module?.name ?? "Record"} — Detail
-            </h1>
-            {record.creator && (
-              <p className="text-sm text-muted-foreground">
-                Created by {record.creator.name}
-              </p>
-            )}
+      {/* Top: Business card header — name, key fields, owner, stage, actions */}
+      <Card className="bg-muted/20">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <Button variant="ghost" size="icon" asChild className="shrink-0 mt-0.5">
+                  <Link href={`/records/${moduleId}`}>
+                    <ArrowLeft className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-2xl font-bold truncate">{String(recordName)}</h1>
+                  <p className="text-sm text-muted-foreground">
+                    {record.module?.name}
+                    {record.creator && ` · Created by ${record.creator.name}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {savedFeedback && (
+                  <span className="text-sm text-green-600 font-medium">Saved</span>
+                )}
+                {canEdit && (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/record/${recordId}`}>
+                      <Pencil className="h-4 w-4 mr-1.5" />
+                      Edit
+                    </Link>
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={async () => {
+                      if (!confirm("Delete this record?")) return;
+                      try {
+                        await recordsApi.delete(recordId);
+                        router.push(`/records/${moduleId}`);
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : "Delete failed");
+                      }
+                    }}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {cardFields.map((f) => {
+                const val = record.values?.[f.fieldKey];
+                let display = "—";
+                if (f.fieldType === "relation" && record.relationDisplay?.[f.fieldKey]) {
+                  display = record.relationDisplay[f.fieldKey];
+                } else if (f.fieldType === "user" && record.userDisplay?.[f.fieldKey]) {
+                  display = record.userDisplay[f.fieldKey];
+                } else if (val != null && val !== "") {
+                  display = typeof val === "object" ? JSON.stringify(val) : String(val);
+                }
+                return (
+                  <div key={f.id} className="flex flex-col gap-0.5">
+                    <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+                    <span className="text-sm font-medium">{display}</span>
+                  </div>
+                );
+              })}
+              {recordStage && (
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-medium text-muted-foreground">Stage</span>
+                  <span className="text-sm font-medium">{recordStage}</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        {canDelete && (
-          <Button
-            variant="destructive"
-            size="sm"
-            className="shrink-0 w-full sm:w-auto"
-            onClick={async () => {
-              if (!confirm("Delete this record?")) return;
-              try {
-                await recordsApi.delete(recordId);
-                router.push(`/records/${moduleId}`);
-              } catch (e) {
-                alert(e instanceof Error ? e.message : "Delete failed");
-              }
-            }}
-          >
-            Delete
-          </Button>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Field values form */}
+        {/* Left: Details form, Relationships, Attachments */}
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -164,18 +247,18 @@ export default function RecordDetailPage() {
                 />
               ) : (
                 <div className="space-y-2">
-                  {Object.entries(record.values).map(([key, val]) => (
-                    <div key={key} className="flex flex-col gap-1">
-                      <span className="text-sm font-medium text-muted-foreground">
-                        {key}
-                      </span>
-                      <span className="text-sm">
-                        {typeof val === "object"
-                          ? JSON.stringify(val)
-                          : String(val)}
-                      </span>
-                    </div>
-                  ))}
+                  {Object.entries(record.values).map(([key, val]) => {
+                    const relLabel = record.relationDisplay?.[key];
+                    const userLabel = record.userDisplay?.[key];
+                    const display =
+                      relLabel ?? userLabel ?? (typeof val === "object" ? JSON.stringify(val) : val != null && val !== "" ? String(val) : "—");
+                    return (
+                      <div key={key} className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-muted-foreground">{key}</span>
+                        <span className="text-sm">{display}</span>
+                      </div>
+                    );
+                  })}
                   <Button variant="outline" size="sm" asChild className="mt-4">
                     <Link href={`/records/${moduleId}`}>Back to list</Link>
                   </Button>
@@ -183,20 +266,27 @@ export default function RecordDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <RelatedRecordsSection recordId={recordId} moduleId={moduleId} />
+
+          <AttachmentsSection
+            value={attachmentsValue ?? []}
+            fieldKey={attachmentsFieldKey}
+            onSave={async (key, val: AttachmentItem[]) => handleSaveSingleField(key, val)}
+          />
         </div>
 
-        {/* Right: Activity, Tasks, Notes, Attachments */}
+        {/* Right: Activity panel (tabs) + WhatsApp */}
         <div className="space-y-6">
-          <Card>
-            <CardContent className="pt-6">
-              <ActivityTimeline recordId={recordId} record={record} refreshKey={activityRefresh} />
-            </CardContent>
-          </Card>
-
-          <SendEmailSection
+          <ActivityPanel
             recordId={recordId}
-            defaultTo={typeof record.values?.email === "string" ? String(record.values.email) : ""}
-            onSent={() => setActivityRefresh((n) => n + 1)}
+            record={record}
+            notesValue={notesValue}
+            notesFieldKey={NOTES_FIELD_KEY}
+            onNotesSave={handleSaveSingleField}
+            onCommentAdded={() => setActivityRefresh((n) => n + 1)}
+            activityRefreshKey={activityRefresh}
+            defaultEmail={typeof record.values?.email === "string" ? String(record.values.email) : ""}
           />
 
           <WhatsAppChatPanel
@@ -209,26 +299,6 @@ export default function RecordDetailPage() {
                   : ""
             }
             recordValues={record.values ?? {}}
-          />
-
-          <RelatedTasks recordId={recordId} />
-
-          <RelatedRecordsSection recordId={recordId} moduleId={moduleId} />
-
-          <RecordFilesSection recordId={recordId} />
-
-          <NotesSection
-            value={notesValue}
-            fieldKey={NOTES_FIELD_KEY}
-            onSave={async (key, val) => handleSaveSingleField(key, val)}
-          />
-
-          <AttachmentsSection
-            value={attachmentsValue ?? []}
-            fieldKey={attachmentsFieldKey}
-            onSave={async (key, val: AttachmentItem[]) =>
-              handleSaveSingleField(key, val)
-            }
           />
         </div>
       </div>

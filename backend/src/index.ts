@@ -18,9 +18,14 @@ import pipelineRoutes from "./modules/pipelines/pipelines.routes.js";
 import taskRoutes from "./modules/tasks/tasks.routes.js";
 import automationRoutes from "./modules/automations/automations.routes.js";
 import dashboardRoutes from "./modules/dashboards/dashboards.routes.js";
+import roleDashboardsRoutes from "./modules/role-dashboards/role-dashboards.routes.js";
 import relationshipsRoutes from "./modules/relationships/relationships.routes.js";
 import recordRelationsRoutes from "./modules/record-relations/record-relations.routes.js";
 import activityLogRoutes from "./modules/activity-log/activity-log.routes.js";
+import activitiesRoutes from "./modules/activities/activities.routes.js";
+import commentsRoutes from "./modules/comments/comments.routes.js";
+import assignmentRulesRoutes from "./modules/assignment-rules/assignment-rules.routes.js";
+import duplicateRulesRoutes from "./modules/duplicate-rules/duplicate-rules.routes.js";
 import auditLogRoutes from "./modules/audit-log/audit-log.routes.js";
 import rolesRoutes from "./modules/roles/roles.routes.js";
 import tenantSettingsRoutes from "./modules/tenant-settings/tenant-settings.routes.js";
@@ -33,10 +38,12 @@ import emailRoutes from "./modules/email/email.routes.js";
 import filesRoutes from "./modules/files/files.routes.js";
 import billingRoutes from "./modules/billing/billing.routes.js";
 import crmTemplatesRoutes from "./modules/crm-templates/templates.routes.js";
+import usersRoutes from "./modules/users/users.routes.js";
 import whatsappRoutes from "./modules/whatsapp/whatsapp.routes.js";
 import { handleWebhook } from "./modules/whatsapp/whatsapp.webhook.js";
 import formsRoutes from "./modules/lead-capture/forms.routes.js";
 import { handleWebhookLeads } from "./modules/lead-capture/webhook-leads.routes.js";
+import { initQueues } from "./queues/queues.js";
 
 const app = express();
 
@@ -89,11 +96,17 @@ app.use("/pipelines", authMiddleware, rateLimitPerUser, tenantMiddleware, pipeli
 app.use("/tasks", authMiddleware, rateLimitPerUser, tenantMiddleware, taskRoutes);
 app.use("/automations", authMiddleware, rateLimitPerUser, tenantMiddleware, automationRoutes);
 app.use("/dashboards", authMiddleware, rateLimitPerUser, tenantMiddleware, dashboardRoutes);
+app.use("/role-dashboards", authMiddleware, rateLimitPerUser, tenantMiddleware, roleDashboardsRoutes);
 app.use("/module-relationships", authMiddleware, rateLimitPerUser, tenantMiddleware, relationshipsRoutes);
 app.use("/record-relations", authMiddleware, rateLimitPerUser, tenantMiddleware, recordRelationsRoutes);
 app.use("/activity-log", authMiddleware, rateLimitPerUser, tenantMiddleware, activityLogRoutes);
+app.use("/activities", authMiddleware, rateLimitPerUser, tenantMiddleware, activitiesRoutes);
+app.use("/comments", authMiddleware, rateLimitPerUser, tenantMiddleware, commentsRoutes);
+app.use("/assignment-rules", authMiddleware, rateLimitPerUser, tenantMiddleware, assignmentRulesRoutes);
+app.use("/duplicate-rules", authMiddleware, rateLimitPerUser, tenantMiddleware, duplicateRulesRoutes);
 app.use("/audit-logs", authMiddleware, rateLimitPerUser, tenantMiddleware, auditLogRoutes);
 app.use("/roles", authMiddleware, rateLimitPerUser, tenantMiddleware, rolesRoutes);
+app.use("/users", authMiddleware, rateLimitPerUser, tenantMiddleware, usersRoutes);
 app.use("/api-tokens", authMiddleware, rateLimitPerUser, tenantMiddleware, apiTokensRoutes);
 app.use("/webhooks", authMiddleware, rateLimitPerUser, tenantMiddleware, webhooksRoutes);
 app.use("/import-export", authMiddleware, rateLimitPerUser, tenantMiddleware, importExportRoutes);
@@ -103,12 +116,18 @@ app.use("/emails", authMiddleware, rateLimitPerUser, tenantMiddleware, emailRout
 app.use("/files", authMiddleware, rateLimitPerUser, tenantMiddleware, filesRoutes);
 app.use("/billing", authMiddleware, rateLimitPerUser, billingRoutes);
 app.use("/crm-templates", crmTemplatesRoutes);
+// Spec alias: POST /api/templates/install (same as POST /crm-templates/install)
+app.use("/api/templates", crmTemplatesRoutes);
 app.use("/whatsapp", whatsappRoutes);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`Server running on http://localhost:${config.port}`);
-});
+initQueues()
+  .catch((e) => console.warn("Queues init:", (e as Error).message))
+  .then(() => {
+    app.listen(config.port, () => {
+      console.log(`Server running on http://localhost:${config.port}`);
+    });
+  });

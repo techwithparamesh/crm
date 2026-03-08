@@ -17,6 +17,8 @@ export const FIELD_TYPES = [
   "currency",
   "file",
   "boolean",
+  "relation",
+  "user",
 ] as const;
 
 export type FieldType = (typeof FIELD_TYPES)[number];
@@ -32,6 +34,9 @@ export function getDefaultValue(field: Field): unknown {
       return false;
     case "multi_select":
       return [];
+    case "relation":
+    case "user":
+      return ""; // store linked record id or user id
     default:
       return "";
   }

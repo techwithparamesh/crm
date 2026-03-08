@@ -1,8 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("crm_token");
+}
+
+function buildUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return API_BASE ? `${API_BASE}${p}` : p;
 }
 
 export async function api<T>(
@@ -15,7 +20,17 @@ export async function api<T>(
     ...(init.headers as Record<string, string>),
   };
   if (token) (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const url = buildUrl(path);
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (err) {
+    const base = API_BASE || "http://localhost:4000";
+    throw new Error(
+      `Could not reach the API. Is the backend running? Expected at: ${base}`
+    );
+  }
+  if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error ?? res.statusText ?? "Request failed");
   return data as T;
@@ -24,9 +39,18 @@ export async function api<T>(
 export const authApi = {
   register: (body: { name: string; email: string; password: string; tenantName: string }) =>
     api<AuthResponse>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
-  login: (body: { email: string; password: string; tenantId: string }) =>
+  login: (body: { email: string; password: string; tenantId?: string; tenantName?: string }) =>
     api<AuthResponse>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
   me: () => api<{ user: AuthUser }>("/auth/me"),
+};
+
+export interface TenantUser {
+  id: string;
+  name: string;
+  email: string;
+}
+export const usersApi = {
+  list: () => api<TenantUser[]>("/users"),
 };
 
 export interface TenantBranding {
@@ -95,11 +119,15 @@ export const fieldsApi = {
 };
 
 export const recordsApi = {
-  list: (moduleId: string, params?: { page?: number; limit?: number; stageId?: string }) => {
+  list: (moduleId: string, params?: { page?: number; limit?: number; stageId?: string; createdBy?: string; ownerId?: string; dateFrom?: string; dateTo?: string }) => {
     const q = new URLSearchParams();
     if (params?.page) q.set("page", String(params.page));
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.stageId) q.set("stageId", params.stageId);
+    if (params?.createdBy) q.set("createdBy", params.createdBy);
+    if (params?.ownerId) q.set("ownerId", params.ownerId);
+    if (params?.dateFrom) q.set("dateFrom", params.dateFrom);
+    if (params?.dateTo) q.set("dateTo", params.dateTo);
     return api<{ items: RecordListItem[]; total: number; page: number; limit: number }>(`records/${moduleId}?${q}`);
   },
   get: (id: string) => api<RecordDetail>(`records/detail/${id}`),
@@ -117,6 +145,9 @@ export const pipelinesApi = {
   get: (id: string) => api<PipelineWithStages>(`pipelines/${id}`),
   create: (body: { moduleId: string; name: string }) =>
     api<Pipeline>("pipelines", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: { name?: string }) =>
+    api<Pipeline>(`pipelines/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (id: string) => api<void>(`pipelines/${id}`, { method: "DELETE" }),
   createStage: (body: { pipelineId: string; stageName: string; orderIndex?: number }) =>
     api<PipelineStage>("pipelines/pipeline-stages", { method: "POST", body: JSON.stringify(body) }),
 };
@@ -149,12 +180,32 @@ export const dashboardsApi = {
   list: () => api<Dashboard[]>("dashboards"),
   get: (id: string) => api<DashboardWithWidgets>(`dashboards/${id}`),
   create: (body: { name: string }) => api<Dashboard>("dashboards", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: { name?: string }) => api<Dashboard>(`dashboards/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (id: string) => api<void>(`dashboards/${id}`, { method: "DELETE" }),
   createWidget: (body: { dashboardId: string; widgetType: string; configJSON?: string; orderIndex?: number }) =>
     api<Widget>("dashboards/widgets", { method: "POST", body: JSON.stringify(body) }),
   updateWidget: (id: string, body: { widgetType?: string; configJSON?: string; orderIndex?: number }) =>
     api<Widget>(`dashboards/widgets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteWidget: (id: string) => api<void>(`dashboards/widgets/${id}`, { method: "DELETE" }),
 };
+
+export const roleDashboardsApi = {
+  getForMe: () => api<{ dashboard: { id: string; name: string } | null }>("role-dashboards/for-me"),
+  list: () => api<RoleDashboardAssignment[]>("role-dashboards"),
+  create: (body: { roleId: string; dashboardId: string; orderIndex?: number }) =>
+    api<RoleDashboardAssignment>("role-dashboards", { method: "POST", body: JSON.stringify(body) }),
+  delete: (id: string) => api<void>("role-dashboards/" + id, { method: "DELETE" }),
+};
+
+export interface RoleDashboardAssignment {
+  id: string;
+  tenantId: string;
+  roleId: string;
+  dashboardId: string;
+  orderIndex: number;
+  role?: { id: string; name: string };
+  dashboard?: { id: string; name: string };
+}
 
 export const relationshipsApi = {
   list: (moduleId?: string) =>
@@ -259,7 +310,7 @@ export const importExportApi = {
     const form = new FormData();
     form.append("file", file);
     const token = getToken();
-    const res = await fetch(`${API_BASE}import-export/parse`, {
+    const res = await fetch(buildUrl("import-export/parse"), {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -277,7 +328,7 @@ export const importExportApi = {
     form.append("mapping", JSON.stringify(mapping));
     if (useJobQueue !== undefined) form.append("useJobQueue", String(useJobQueue));
     const token = getToken();
-    const res = await fetch(`${API_BASE}import-export/run`, {
+    const res = await fetch(buildUrl("import-export/run"), {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -297,7 +348,7 @@ export const importExportApi = {
     const q = new URLSearchParams({ moduleId, format });
     if (fields?.length) q.set("fields", fields.join(","));
     const token = getToken();
-    const res = await fetch(`${API_BASE}import-export/download?${q}`, {
+    const res = await fetch(buildUrl(`import-export/download?${q}`), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error("Export failed");
@@ -318,6 +369,7 @@ export interface NotificationItem {
   type: string;
   title: string;
   message: string | null;
+  link: string | null;
   entityType: string | null;
   entityId: string | null;
   readAt: string | null;
@@ -354,6 +406,63 @@ export const notificationsApi = {
   markAllAsRead: () => api<{ ok: boolean }>("notifications/read-all", { method: "POST" }),
 };
 
+export const commentsApi = {
+  list: (recordId: string, limit?: number) => {
+    const q = new URLSearchParams({ recordId });
+    if (limit != null) q.set("limit", String(limit));
+    return api<CommentItem[]>("comments?" + q);
+  },
+  create: (recordId: string, message: string) =>
+    api<CommentItem>("comments", { method: "POST", body: JSON.stringify({ recordId, message }) }),
+  delete: (id: string) => api<void>("comments/" + id, { method: "DELETE" }),
+};
+
+export interface CommentItem {
+  id: string;
+  tenantId: string;
+  recordId: string;
+  userId: string;
+  message: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+}
+
+export const activitiesApi = {
+  listByRecord: (recordId: string, limit?: number) => {
+    const q = new URLSearchParams({ recordId });
+    if (limit != null) q.set("limit", String(limit));
+    return api<ActivityItem[]>("activities?" + q);
+  },
+  listMine: (params?: { status?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    return api<ActivityItem[]>("activities?" + q.toString());
+  },
+  create: (body: { recordId: string; type: string; title: string; description?: string; dueDate?: string; assignedTo?: string }) =>
+    api<ActivityItem>("activities", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<{ title: string; description: string; dueDate: string; assignedTo: string; status: string }>) =>
+    api<ActivityItem>("activities/" + id, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (id: string) => api<void>("activities/" + id, { method: "DELETE" }),
+};
+
+export interface ActivityItem {
+  id: string;
+  tenantId: string;
+  recordId: string;
+  type: string;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  assignedTo: string | null;
+  status: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: { id: string; name: string; email: string } | null;
+  creator?: { id: string; name: string; email: string } | null;
+}
+
 // Types
 export interface Module {
   id: string;
@@ -381,6 +490,7 @@ export interface Field {
   isRequired: boolean;
   isUnique: boolean;
   optionsJSON: string | null;
+  relationModuleId: string | null;
   defaultValue: string | null;
   orderIndex: number;
 }
@@ -391,6 +501,7 @@ export interface CreateFieldBody {
   isRequired?: boolean;
   isUnique?: boolean;
   optionsJSON?: string;
+  relationModuleId?: string;
   defaultValue?: string;
   orderIndex?: number;
 }
@@ -405,6 +516,8 @@ export interface RecordListItem {
 export interface RecordDetail extends RecordListItem {
   module?: { name: string; slug: string };
   creator?: { id: string; name: string; email: string } | null;
+  relationDisplay?: Record<string, string>;
+  userDisplay?: Record<string, string>;
 }
 export interface Pipeline {
   id: string;
@@ -505,6 +618,7 @@ export interface RelatedRecordEntry {
 export interface ActivityLogEntry {
   id: string;
   eventType: string;
+  message: string | null;
   userId: string | null;
   metadataJSON: string | null;
   createdAt: string;
@@ -589,8 +703,7 @@ export const filesApi = {
     const form = new FormData();
     form.append("file", file);
     form.append("recordId", recordId);
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-    const res = await fetch(`${API_BASE}/files/upload`, {
+    const res = await fetch(buildUrl("/files/upload"), {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
@@ -673,19 +786,90 @@ export const billingApi = {
 export interface CrmTemplateItem {
   id: string;
   name: string;
+  category?: string | null;
   description: string | null;
   icon: string | null;
   createdAt: string;
 }
 
+/** Progress event from template install stream */
+export interface TemplateInstallProgressEvent {
+  step: string;
+  message: string;
+  current?: number;
+  total?: number;
+  done?: boolean;
+  result?: { installed: boolean };
+  error?: string;
+}
+
 export const crmTemplatesApi = {
-  list: () => api<CrmTemplateItem[]>("crm-templates"),
-  get: (id: string) => api<CrmTemplateItem & { templateJSON: string }>(`crm-templates/${id}`),
+  list: (category?: string) =>
+    api<CrmTemplateItem[]>("crm-templates" + (category ? "?category=" + encodeURIComponent(category) : "")),
+  get: (id: string) =>
+    api<CrmTemplateItem & { templateJSON: string }>("crm-templates/" + id),
   install: (templateId: string) =>
     api<{ installed: boolean }>("crm-templates/install", {
       method: "POST",
       body: JSON.stringify({ templateId }),
     }),
+  /** Install with progress stream; calls onProgress for each event. Resolves when done or throws on error. */
+  installWithProgress: async (
+    templateId: string,
+    onProgress: (event: TemplateInstallProgressEvent) => void
+  ): Promise<{ installed: boolean }> => {
+    const url = `${buildUrl("crm-templates/install")}?stream=1`;
+    const token = getToken();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ templateId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data?.error ?? res.statusText ?? "Install failed");
+    }
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No response body");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: { installed: boolean } | null = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line) as TemplateInstallProgressEvent & { done?: boolean };
+          onProgress(event);
+          if (event.done && event.result) result = event.result;
+          if (event.error) throw new Error(event.error);
+        } catch (e) {
+          if (e instanceof Error && e.message !== "Install failed") {
+            try {
+              onProgress({ step: "error", message: e.message, done: true, error: e.message });
+            } catch (_) {}
+          }
+          throw e;
+        }
+      }
+    }
+    if (buffer.trim()) {
+      try {
+        const event = JSON.parse(buffer) as TemplateInstallProgressEvent & { done?: boolean };
+        onProgress(event);
+        if (event.done && event.result) result = event.result;
+      } catch (_) {}
+    }
+    if (!result) throw new Error("Install did not complete");
+    return result;
+  },
 };
 
 // WhatsApp

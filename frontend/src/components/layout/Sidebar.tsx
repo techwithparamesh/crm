@@ -11,6 +11,7 @@ import {
   Workflow,
   BarChart3,
   Settings,
+  FileBarChart,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/relationships", label: "Relationships", icon: Link2 },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/automations", label: "Automations", icon: Workflow },
+  { href: "/reports", label: "Reports", icon: FileBarChart },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

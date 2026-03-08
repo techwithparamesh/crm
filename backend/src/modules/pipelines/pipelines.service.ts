@@ -5,7 +5,7 @@ import { fireAutomations } from "../automations/automation-engine.js";
 import { logActivity } from "../activity-log/activity-log.service.js";
 import { createNotification } from "../notifications/notifications.service.js";
 import { dispatchWebhooks } from "../webhooks/webhook-dispatcher.js";
-import type { CreatePipelineInput, CreateStageInput } from "./pipelines.validation.js";
+import type { CreatePipelineInput, UpdatePipelineInput, CreateStageInput } from "./pipelines.validation.js";
 
 export async function createPipeline(tenantId: string, input: CreatePipelineInput) {
   const module = await prisma.module.findFirst({ where: { id: input.moduleId, tenantId } });
@@ -20,6 +20,24 @@ export async function listPipelines(tenantId: string) {
     where: { tenantId },
     include: { module: true, stages: { orderBy: { orderIndex: "asc" } } },
   });
+}
+
+export async function updatePipeline(tenantId: string, id: string, input: UpdatePipelineInput) {
+  const p = await prisma.pipeline.findFirst({ where: { id, tenantId } });
+  if (!p) throw new Error("Pipeline not found");
+  const updated = await prisma.pipeline.update({
+    where: { id },
+    data: input,
+  });
+  await cacheDel(pipelineStagesKey(tenantId, id));
+  return updated;
+}
+
+export async function deletePipeline(tenantId: string, id: string) {
+  const p = await prisma.pipeline.findFirst({ where: { id, tenantId } });
+  if (!p) throw new Error("Pipeline not found");
+  await prisma.pipeline.delete({ where: { id } });
+  await cacheDel(pipelineStagesKey(tenantId, id));
 }
 
 export async function getPipelineById(tenantId: string, id: string) {

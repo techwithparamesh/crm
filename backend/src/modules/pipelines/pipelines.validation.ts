@@ -5,6 +5,10 @@ export const createPipelineSchema = z.object({
   name: z.string().min(1),
 });
 
+export const updatePipelineSchema = z.object({
+  name: z.string().min(1).optional(),
+});
+
 export const createStageSchema = z.object({
   pipelineId: z.string().min(1),
   stageName: z.string().min(1),
@@ -16,4 +20,5 @@ export const updateStageOrderSchema = z.object({
 });
 
 export type CreatePipelineInput = z.infer<typeof createPipelineSchema>;
+export type UpdatePipelineInput = z.infer<typeof updatePipelineSchema>;
 export type CreateStageInput = z.infer<typeof createStageSchema>;

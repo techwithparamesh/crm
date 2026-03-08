@@ -210,6 +210,72 @@ async function runAction(action: Action, context: AutomationContext): Promise<vo
         }
       }
       break;
+    case "create_record": {
+      const targetModuleId = params.targetModuleId as string | undefined;
+      const fieldMapping = (params.fieldMapping ?? []) as Array<{
+        targetFieldKey: string;
+        sourceType: "field" | "literal";
+        sourceFieldKey?: string;
+        literalValue?: unknown;
+      }>;
+      const setOnCurrentRecord = params.setOnCurrentRecord as { fieldKey: string } | undefined;
+      if (!targetModuleId || !Array.isArray(fieldMapping)) break;
+      const values: Record<string, unknown> = {};
+      for (const m of fieldMapping) {
+        if (!m?.targetFieldKey) continue;
+        if (m.sourceType === "literal") {
+          values[m.targetFieldKey] = m.literalValue;
+        } else if (m.sourceType === "field" && m.sourceFieldKey && recordValues) {
+          const v = recordValues[m.sourceFieldKey];
+          if (v !== undefined && v !== null && v !== "") values[m.targetFieldKey] = v;
+        }
+      }
+      const recordsService = await import("../records/records.service.js");
+      const created = await recordsService.createRecord(
+        context.tenantId,
+        targetModuleId,
+        context.userId ?? null,
+        { values, allowDuplicate: true },
+        undefined,
+        { fromAutomation: true }
+      );
+      if (setOnCurrentRecord?.fieldKey && context.recordId && created?.id) {
+        const cur = await prisma.record.findFirst({
+          where: { id: context.recordId, tenantId: context.tenantId },
+          include: { module: { include: { fields: true } } },
+        });
+        if (cur) {
+          const field = cur.module.fields.find((f) => f.fieldKey === setOnCurrentRecord.fieldKey);
+          if (field) {
+            const linkValue = created.id;
+            const col =
+              ["number", "currency"].includes(field.fieldType) ? "valueNumber" :
+              field.fieldType === "date" ? "valueDate" :
+              ["multi_select", "checkbox"].includes(field.fieldType) ? "valueJSON" : "valueText";
+            await prisma.recordValue.upsert({
+              where: {
+                recordId_fieldId: { recordId: context.recordId, fieldId: field.id },
+              },
+              create: {
+                recordId: context.recordId,
+                fieldId: field.id,
+                ...(col === "valueText" && { valueText: linkValue }),
+                ...(col === "valueNumber" && { valueNumber: Number(linkValue) }),
+                ...(col === "valueDate" && { valueDate: new Date(linkValue) }),
+                ...(col === "valueJSON" && { valueJSON: JSON.stringify(linkValue) }),
+              },
+              update: {
+                ...(col === "valueText" && { valueText: linkValue }),
+                ...(col === "valueNumber" && { valueNumber: Number(linkValue) }),
+                ...(col === "valueDate" && { valueDate: new Date(linkValue) }),
+                ...(col === "valueJSON" && { valueJSON: JSON.stringify(linkValue) }),
+              },
+            });
+          }
+        }
+      }
+      break;
+    }
     default:
       console.log("[Automation] Unknown action type", (action as Action).type);
   }

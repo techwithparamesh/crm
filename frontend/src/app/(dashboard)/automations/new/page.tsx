@@ -110,6 +110,8 @@ export default function NewAutomationPage() {
         actions={actions}
         fields={fields}
         onChange={setActions}
+        modules={modules}
+        moduleId={moduleId}
       />
 
       <div className="flex items-center gap-4">

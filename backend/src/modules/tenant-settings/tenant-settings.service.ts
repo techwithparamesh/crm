@@ -17,6 +17,10 @@ export async function getSettings(tenantId: string) {
     where: { tenantId },
   });
   if (!row) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new Error("Tenant not found");
+    }
     row = await prisma.tenantSettings.create({
       data: { tenantId },
     });
@@ -43,6 +47,10 @@ export async function updateSettings(tenantId: string, input: UpdateTenantSettin
 
   const existing = await prisma.tenantSettings.findUnique({ where: { tenantId } });
   if (!existing) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new Error("Tenant not found");
+    }
     return prisma.tenantSettings.create({
       data: { tenantId, ...data },
     });

@@ -4,26 +4,40 @@
 
 @layer base {
   :root {
-    --tenant-primary: hsl(262 83% 58%);
-    --tenant-secondary: hsl(220 14% 96%);
-    --background: 220 20% 97%;
-    --foreground: 220 20% 10%;
+    /* Applyn CRM brand: #7C3AED #6366F1 #3B82F6 #14B8A6 */
+    --applyn-purple: 263 70% 58%;
+    --applyn-indigo: 239 84% 67%;
+    --applyn-blue: 217 91% 60%;
+    --applyn-teal: 174 77% 40%;
+    --tenant-primary: var(--applyn-purple);
+    --tenant-secondary: 220 14% 96%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
-    --primary: 262 83% 58%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 263 70% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 20% 20%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 10% 45%;
-    --accent: 262 30% 92%;
-    --accent-foreground: 262 83% 30%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 20%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 263 30% 94%;
+    --accent-foreground: 263 70% 35%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 262 83% 58%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 263 70% 58%;
     --radius: 0.5rem;
+    --space-sidebar: 14rem;
+    --space-sidebar-collapsed: 3.5rem;
+    --header-h: 3.5rem;
+    --card-radius: 0.75rem;
+    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+    --card-shadow-hover: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+    --section-gap: 1.5rem;
   }
   .dark {
     --background: 224 30% 8%;
@@ -43,6 +57,8 @@
     --border: 224 20% 18%;
     --input: 224 20% 18%;
     --ring: 262 83% 65%;
+    --popover: 224 25% 11%;
+    --popover-foreground: 220 14% 96%;
   }
 }
 

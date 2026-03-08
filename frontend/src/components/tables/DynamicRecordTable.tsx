@@ -20,7 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns, Search, MoreHorizontal, Eye, Pencil, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface DynamicRecordTableProps {
   moduleId: string;
@@ -98,9 +104,45 @@ export function DynamicRecordTable({
           return !filterValue || s.includes(String(filterValue).toLowerCase());
         },
       })),
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={() => router.push(`${recordDetailPath}/${row.original.id}`)}>
+                <Eye className="h-4 w-4 mr-2" />
+                View
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`${recordDetailPath}/${row.original.id}`)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (typeof window !== "undefined" && window.confirm("Delete this record?")) {
+                    import("@/lib/api").then(({ recordsApi }) => recordsApi.delete(row.original.id).then(() => window.location.reload()));
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+        size: 56,
+      },
     ];
     return cols as ColumnDef<RecordListItem>[];
-  }, [fields]);
+  }, [fields, router, recordDetailPath]);
 
   const table = useReactTable({
     data: items,
@@ -240,20 +282,18 @@ export function DynamicRecordTable({
             </thead>
             <tbody>
               {loading ? (
-                <tr>
-                  <td
-                    colSpan={columns.length}
-                    className="p-6 text-center text-muted-foreground"
-                  >
-                    Loading...
-                  </td>
-                </tr>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="border-b">
+                    {table.getHeaderGroups()[0]?.headers.map((h) => (
+                      <td key={h.id} className="p-3">
+                        <div className="h-5 rounded bg-muted animate-pulse" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={columns.length}
-                    className="p-6 text-center text-muted-foreground"
-                  >
+                  <td colSpan={columns.length} className="p-6 text-center text-muted-foreground">
                     No records.
                   </td>
                 </tr>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { recordsApi } from "@/lib/api";
+import { useAuthStore } from "@/store/auth-store";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { WidgetConfig } from "./types";
 
@@ -18,6 +19,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
   const [data, setData] = useState<BarItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
     if (!config.moduleId || !config.categoryField) {
@@ -28,7 +30,13 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
     setLoading(true);
     setError(null);
     recordsApi
-      .list(config.moduleId, { limit: 500, stageId: config.filters?.stageId })
+      .list(config.moduleId, {
+        limit: 500,
+        stageId: config.filters?.stageId,
+        ...(config.scopeOwn && userId ? { createdBy: userId } : {}),
+        ...(config.dateFrom ? { dateFrom: config.dateFrom } : {}),
+        ...(config.dateTo ? { dateTo: config.dateTo } : {}),
+      })
       .then((res) => {
         const agg: Record<string, number> = {};
         const catField = config.categoryField!;
@@ -50,7 +58,7 @@ export function BarChartWidget({ config }: BarChartWidgetProps) {
       })
       .catch(() => setError("Failed to load"))
       .finally(() => setLoading(false));
-  }, [config.moduleId, config.categoryField, config.valueAgg, config.valueField, config.filters?.stageId]);
+  }, [config.moduleId, config.categoryField, config.valueAgg, config.valueField, config.filters?.stageId, config.scopeOwn, config.dateFrom, config.dateTo, userId]);
 
   if (!config.moduleId) return <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Select module and category field.</p></CardContent></Card>;
   if (!config.categoryField) return <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Select category field.</p></CardContent></Card>;

@@ -65,9 +65,9 @@ export function GlobalSearch() {
   };
 
   return (
-    <div className="relative w-64" ref={panelRef}>
+    <div className="relative w-full max-w-md" ref={panelRef}>
       <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           type="search"
@@ -78,32 +78,32 @@ export function GlobalSearch() {
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-3 text-sm"
+          className="w-full rounded-full border border-border bg-slate-100/80 dark:bg-muted/50 py-2 pl-9 pr-4 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
         />
       </div>
       {open && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-96 overflow-auto rounded-lg border bg-card shadow-lg">
+        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-[28rem] overflow-auto rounded-xl border border-border bg-card shadow-lg">
           {!query.trim() && (
-            <p className="p-3 text-sm text-muted-foreground">Type to search across all modules</p>
+            <p className="p-4 text-sm text-muted-foreground">Type to search records across modules</p>
           )}
           {query.trim() && loading && (
-            <p className="p-3 text-sm text-muted-foreground">Searching...</p>
+            <p className="p-4 text-sm text-muted-foreground">Searching...</p>
           )}
           {query.trim() && !loading && results && totalCount === 0 && (
-            <p className="p-3 text-sm text-muted-foreground">No results</p>
+            <p className="p-4 text-sm text-muted-foreground">No results found</p>
           )}
           {query.trim() && !loading && totalCount > 0 && (
-            <ul className="py-1">
+            <ul className="py-2">
               {slugs.map((slug) => (
                 <li key={slug}>
-                  <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     {slug}
                   </div>
                   {(results![slug] as RecordListItem[]).map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted/70"
+                      className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted/70 rounded-none"
                       onClick={() => handleSelect(item.id)}
                     >
                       <div className="truncate text-foreground">

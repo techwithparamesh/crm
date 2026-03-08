@@ -68,7 +68,8 @@ export default function DashboardBuilderPage() {
   };
 
   const handleAddWidget = async () => {
-    if (!dashboard || !newWidgetConfig.moduleId) return;
+    if (!dashboard) return;
+    if (newWidgetType !== "quick_links" && !newWidgetConfig.moduleId) return;
     setSaving(true);
     try {
       await dashboardsApi.createWidget({
@@ -163,9 +164,16 @@ export default function DashboardBuilderPage() {
       </div>
 
       {dashboard.widgets.length === 0 && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">No widgets yet. Click &quot;Add widget&quot; to add metric cards, bar/pie charts, or tables.</p>
+        <Card className="border-dashed border-2 bg-muted/30">
+          <CardContent className="pt-8 pb-8 text-center">
+            <p className="text-lg font-medium mb-1">No widgets yet</p>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+              Add a widget to see your pipeline, lead counts, or quick links here. Choose metric cards, charts, or tables.
+            </p>
+            <Button onClick={() => { setModal("add"); setNewWidgetConfig({ moduleId: "" }); setNewWidgetType("metric_card"); }}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add widget
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -189,7 +197,7 @@ export default function DashboardBuilderPage() {
               />
               <div className="flex gap-2 pt-2">
                 {modal === "add" ? (
-                  <Button onClick={handleAddWidget} disabled={saving || !newWidgetConfig.moduleId}>
+                  <Button onClick={handleAddWidget} disabled={saving || (newWidgetType !== "quick_links" && !newWidgetConfig.moduleId)}>
                     {saving ? "Adding…" : "Add widget"}
                   </Button>
                 ) : (

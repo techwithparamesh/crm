@@ -5,7 +5,7 @@ import { tenantApi, type TenantBranding } from "@/lib/api";
 import { useAuthStore } from "@/store/auth-store";
 
 const DEFAULT_PRIMARY = "hsl(262 83% 58%)";
-const DEFAULT_APP_NAME = "CRM";
+const DEFAULT_APP_NAME = "Applyn CRM";
 
 export interface UseTenantBrandingResult {
   companyName: string;

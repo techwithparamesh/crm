@@ -6,6 +6,8 @@ import { formsApi } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { WebFormListItem } from "@/lib/api";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FileInput, Plus } from "lucide-react";
 
 export default function FormsPage() {
@@ -20,26 +22,38 @@ export default function FormsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Lead capture forms</h1>
-        <Button asChild>
-          <Link href="/forms/new">
-            <Plus className="h-4 w-4 mr-2" />
-            New form
-          </Link>
-        </Button>
+        {!loading && forms.length > 0 && (
+          <Button asChild>
+            <Link href="/forms/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New form
+            </Link>
+          </Button>
+        )}
       </div>
       {loading ? (
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-48" />
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-28 rounded-lg" />
+            ))}
+          </div>
+        </div>
       ) : forms.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">
-              No forms yet. Create a form to capture leads from your website or landing pages.
-            </p>
-            <Button asChild className="mt-4">
-              <Link href="/forms/new">Create form</Link>
+        <EmptyState
+          icon={<FileInput className="h-12 w-12 text-muted-foreground" />}
+          title="No forms yet"
+          description="Create a form to capture leads from your website or landing pages and add them to your CRM."
+          action={
+            <Button asChild>
+              <Link href="/forms/new">
+                <Plus className="h-4 w-4 mr-2" />
+                Create form
+              </Link>
             </Button>
-          </CardContent>
-        </Card>
+          }
+        />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {forms.map((f) => (

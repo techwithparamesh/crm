@@ -16,6 +16,7 @@ export interface CreateNotificationInput {
   type: NotificationType;
   title: string;
   message?: string | null;
+  link?: string | null;
   entityType?: string | null;
   entityId?: string | null;
   metadataJSON?: string | null;
@@ -29,6 +30,7 @@ export async function createNotification(input: CreateNotificationInput) {
       type: input.type,
       title: input.title,
       message: input.message ?? null,
+      link: input.link ?? null,
       entityType: input.entityType ?? null,
       entityId: input.entityId ?? null,
       metadataJSON: input.metadataJSON ?? null,
@@ -49,6 +51,7 @@ export async function createNotificationForUsers(
       type: input.type,
       title: input.title,
       message: input.message ?? null,
+      link: input.link ?? null,
       entityType: input.entityType ?? null,
       entityId: input.entityId ?? null,
       metadataJSON: input.metadataJSON ?? null,

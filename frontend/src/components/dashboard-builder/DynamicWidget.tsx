@@ -3,6 +3,8 @@
 import { MetricCardWidget } from "./MetricCardWidget";
 import { BarChartWidget } from "./BarChartWidget";
 import { PieChartWidget } from "./PieChartWidget";
+import { TimeSeriesWidget } from "./TimeSeriesWidget";
+import { QuickLinksWidget } from "./QuickLinksWidget";
 import { TableWidget } from "./TableWidget";
 import type { WidgetConfig } from "./types";
 
@@ -52,6 +54,10 @@ export function DynamicWidget({ widgetType, config, onEdit, onDelete, isEditing 
       return wrapper(<PieChartWidget config={config} />);
     case "table":
       return wrapper(<TableWidget config={config} />);
+    case "time_series":
+      return wrapper(<TimeSeriesWidget config={config} />);
+    case "quick_links":
+      return wrapper(<QuickLinksWidget config={config} />);
     default:
       return wrapper(
         <div className="rounded-lg border p-4 text-sm text-muted-foreground">

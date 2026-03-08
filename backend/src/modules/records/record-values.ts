@@ -17,6 +17,9 @@ export function getValueColumn(fieldType: string): ValueColumn {
     case "checkbox":
     case "boolean":
       return "valueJSON";
+    case "relation":
+    case "user":
+      return "valueText"; // store linked record id or user id
     default:
       return "valueText";
   }
@@ -44,6 +47,9 @@ export function normalizeValue(fieldType: string, value: unknown): NormalizedVal
     case "dropdown":
     case "boolean":
       return { text: String(value) };
+    case "relation":
+    case "user":
+      return { text: value != null ? String(value) : undefined };
     case "multi_select":
     case "checkbox": {
       const arr = Array.isArray(value) ? value : [value];

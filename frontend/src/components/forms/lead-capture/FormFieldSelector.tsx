@@ -67,22 +67,28 @@ export function FormFieldSelector({ availableFields, selected, onChange }: FormF
         <div>
           <Label className="text-xs text-muted-foreground">Available</Label>
           <ul className="mt-2 border rounded-md divide-y max-h-48 overflow-y-auto">
-            {availableFields
-              .filter((f) => !selectedKeys.has(f.fieldKey))
-              .map((f) => (
-                <li key={f.id} className="px-3 py-2 flex items-center justify-between">
-                  <span className="text-sm">{f.label}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => addField(f)}
-                  >
-                    Add
-                  </Button>
-                </li>
-              ))}
-            {availableFields.filter((f) => !selectedKeys.has(f.fieldKey)).length === 0 && (
+            {availableFields.length === 0 && (
+              <li className="px-3 py-4 text-sm text-muted-foreground">
+                No fields in this module. Add fields under <strong>Modules → [your module] → Fields</strong> first, then return here.
+              </li>
+            )}
+            {availableFields.length > 0 &&
+              availableFields
+                .filter((f) => !selectedKeys.has(f.fieldKey))
+                .map((f) => (
+                  <li key={f.id} className="px-3 py-2 flex items-center justify-between">
+                    <span className="text-sm">{f.label}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => addField(f)}
+                    >
+                      Add
+                    </Button>
+                  </li>
+                ))}
+            {availableFields.length > 0 && availableFields.filter((f) => !selectedKeys.has(f.fieldKey)).length === 0 && (
               <li className="px-3 py-4 text-sm text-muted-foreground">All fields added</li>
             )}
           </ul>

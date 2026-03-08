@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { AuthRequest } from "../../middleware/authMiddleware.js";
 import * as pipelinesService from "./pipelines.service.js";
-import { createPipelineSchema, createStageSchema } from "./pipelines.validation.js";
+import { createPipelineSchema, updatePipelineSchema, createStageSchema } from "./pipelines.validation.js";
 
 const router = Router();
 
@@ -31,6 +31,27 @@ router.get("/:id", async (req: AuthRequest, res, next) => {
     const tenantId = req.user!.tenantId;
     const pipeline = await pipelinesService.getPipelineById(tenantId, req.params.id);
     res.json(pipeline);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch("/:id", async (req: AuthRequest, res, next) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const body = updatePipelineSchema.parse(req.body);
+    const pipeline = await pipelinesService.updatePipeline(tenantId, req.params.id, body);
+    res.json(pipeline);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/:id", async (req: AuthRequest, res, next) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    await pipelinesService.deletePipeline(tenantId, req.params.id);
+    res.status(204).send();
   } catch (e) {
     next(e);
   }

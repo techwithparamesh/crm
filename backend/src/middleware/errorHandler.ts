@@ -16,12 +16,17 @@ export function errorHandler(
     res.status(403).json({ error: err.message });
     return;
   }
-  if (err.message === "Module not found" || err.message === "Field not found" || err.message === "Record not found" || err.message === "Pipeline not found" || err.message === "Task not found" || err.message === "Automation not found" || err.message === "Dashboard not found" || err.message === "Widget not found" || err.message === "Relationship not found" || err.message === "Link not found" || err.message === "Role not found") {
+  if (err.message === "Tenant not found" || err.message === "Module not found" || err.message === "Field not found" || err.message === "Record not found" || err.message === "Pipeline not found" || err.message === "Task not found" || err.message === "Automation not found" || err.message === "Dashboard not found" || err.message === "Widget not found" || err.message === "Relationship not found" || err.message === "Link not found" || err.message === "Role not found") {
     res.status(404).json({ error: err.message });
     return;
   }
   if (err.message?.includes("Invalid") || err.message?.includes("already exists")) {
     res.status(400).json({ error: err.message });
+    return;
+  }
+  const errWithDup = err as Error & { duplicates?: Record<string, string[]> };
+  if (err.message === "Duplicate records found" && errWithDup.duplicates) {
+    res.status(409).json({ error: err.message, duplicates: errWithDup.duplicates });
     return;
   }
   const status = err.statusCode ?? 500;

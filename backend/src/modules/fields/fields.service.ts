@@ -1,4 +1,6 @@
 import { prisma } from "../../prisma/client.js";
+import { cacheDel } from "../../utils/redis.js";
+import { moduleMetadataKey } from "../../utils/cacheKeys.js";
 import type { CreateFieldInput, UpdateFieldInput } from "./fields.validation.js";
 
 export async function createField(tenantId: string, moduleId: string, input: CreateFieldInput) {
@@ -8,9 +10,11 @@ export async function createField(tenantId: string, moduleId: string, input: Cre
     where: { moduleId, fieldKey: input.fieldKey },
   });
   if (existing) throw new Error("Field key already exists in this module");
-  return prisma.field.create({
+  const field = await prisma.field.create({
     data: { moduleId, tenantId, ...input },
   });
+  await cacheDel(moduleMetadataKey(tenantId, moduleId));
+  return field;
 }
 
 export async function listFieldsByModule(tenantId: string, moduleId: string) {
@@ -31,14 +35,17 @@ export async function getFieldById(tenantId: string, fieldId: string) {
 }
 
 export async function updateField(tenantId: string, fieldId: string, input: UpdateFieldInput) {
-  await getFieldById(tenantId, fieldId);
-  return prisma.field.update({
+  const f = await getFieldById(tenantId, fieldId);
+  const updated = await prisma.field.update({
     where: { id: fieldId },
     data: input,
   });
+  await cacheDel(moduleMetadataKey(tenantId, f.moduleId));
+  return updated;
 }
 
 export async function deleteField(tenantId: string, fieldId: string) {
-  await getFieldById(tenantId, fieldId);
-  return prisma.field.delete({ where: { id: fieldId } });
+  const f = await getFieldById(tenantId, fieldId);
+  await prisma.field.delete({ where: { id: fieldId } });
+  await cacheDel(moduleMetadataKey(tenantId, f.moduleId));
 }

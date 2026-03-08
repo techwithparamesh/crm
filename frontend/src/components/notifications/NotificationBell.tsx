@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
 import { notificationsApi, type NotificationItem } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { cn } from "@/lib/utils";
 const POLL_INTERVAL_MS = 30000;
 
 export function NotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -89,38 +91,45 @@ export function NotificationBell() {
         )}
       </Button>
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border bg-card shadow-lg">
-          <div className="flex items-center justify-between border-b px-3 py-2">
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-80 rounded-xl border border-border bg-card shadow-lg overflow-hidden">
+          <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
             <span className="font-semibold text-sm">Notifications</span>
             {unreadCount > 0 && (
-              <Button variant="ghost" size="sm" className="text-xs" onClick={handleMarkAllRead} disabled={loading}>
+              <Button variant="ghost" size="sm" className="text-xs rounded-lg" onClick={handleMarkAllRead} disabled={loading}>
                 Mark all read
               </Button>
             )}
           </div>
           <div className="max-h-96 overflow-auto">
             {items.length === 0 ? (
-              <p className="p-4 text-center text-sm text-muted-foreground">No notifications</p>
+              <p className="p-6 text-center text-sm text-muted-foreground">No notifications yet. Task reminders, assignments, and mentions will appear here.</p>
             ) : (
-              <ul className="divide-y">
+              <ul className="divide-y divide-border">
                 {items.map((n) => (
                   <li
                     key={n.id}
                     className={cn(
-                      "cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-muted/50",
+                      "cursor-pointer px-4 py-3 text-sm transition-colors hover:bg-muted/50",
                       !n.readAt && "bg-primary/5"
                     )}
                     onClick={() => {
                       if (!n.readAt) handleMarkRead(n.id);
+                      setOpen(false);
+                      if (n.link) router.push(n.link);
                     }}
                   >
                     <div className="font-medium">{n.title}</div>
-                    {n.message && <div className="text-muted-foreground truncate">{n.message}</div>}
-                    <div className="text-xs text-muted-foreground mt-0.5">{formatTime(n.createdAt)}</div>
+                    {n.message && <div className="text-muted-foreground truncate mt-0.5">{n.message}</div>}
+                    <div className="text-xs text-muted-foreground mt-1">{formatTime(n.createdAt)}</div>
                   </li>
                 ))}
               </ul>
             )}
+          </div>
+          <div className="border-t border-border px-4 py-2 bg-muted/20">
+            <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground rounded-lg" onClick={() => setOpen(false)}>
+              View all notifications
+            </Button>
           </div>
         </div>
       )}

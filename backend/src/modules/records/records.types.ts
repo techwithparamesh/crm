@@ -12,6 +12,7 @@ export interface RecordListItem {
   moduleId: string;
   tenantId: string;
   createdBy: string | null;
+  ownerId?: string | null;
   pipelineStageId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -22,6 +23,10 @@ export interface RecordListItem {
 export interface RecordDetail extends RecordListItem {
   module?: { name: string; slug: string };
   creator?: { id: string; name: string; email: string } | null;
+  /** Resolved display labels for relation fields (fieldKey -> display string) */
+  relationDisplay?: Record<string, string>;
+  /** Resolved display labels for user fields (fieldKey -> user name) */
+  userDisplay?: Record<string, string>;
 }
 
 export interface ListRecordsResult {
